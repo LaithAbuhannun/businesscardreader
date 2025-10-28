@@ -36,10 +36,7 @@ https://github.com/user-attachments/assets/e0fdaea9-2890-4a9c-8a1a-bc6291a3ce8f
 
 ### 2. Review + edit extracted contact info
 
-<p align="center">
-  <video src="assets/review-edit.mp4" width="480" controls muted playsinline></video>
-</p>
-
+https://github.com/user-attachments/assets/4dfaaf35-2d6c-4ba5-9d7f-4880a0c20896
 ### 3. Saved contacts view
 
 <p align="center">
