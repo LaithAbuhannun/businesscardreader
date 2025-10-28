@@ -1,0 +1,223 @@
+
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .template {
+                width: 800px;
+                height: 650px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: space-evenly;
+            }
+
+            #camera {
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+        }
+
+        video {
+            width: 100%;
+            height: auto;
+            max-height: 500px;
+            border: 1px solid #ccc;
+        }
+
+        h1 {
+            animation: change 2s infinite;
+        }
+
+        button {
+            height: 50px;
+            width: 170px;
+            margin-bottom: 40px;
+            border-radius: 3px;
+            padding: 2px;
+            font-weight: bold;
+            background-color: #4c8bf5;
+            font-size: 20px;
+            color: whitesmoke;
+            cursor: pointer;
+        }
+
+        canvas {
+                position: absolute;
+                top: 0;
+                left: 0;
+                pointer-events: none; /* Make sure canvas doesn't block interactions */
+                border-radius: 5px;
+                z-index: 10; /* Ensure canvas is on top */
+            }
+
+        #crops {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .buttons {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+
+
+        @keyframes change {
+            0% {
+                color: red;
+            }
+
+            50% {
+                color: #4c8bf5;
+            }
+
+            100% {
+                color: #34a853;
+            }
+        }
+        </style>
+    </head>
+    <body>
+        <div class="template">
+            <h1>Scan Business Card</h1>
+            <video id="camera" autoplay playsinline></video>
+            <div class="buttons">
+                <button id="captureBtn">Capture Image</button>
+                <button onclick="logout()">Logout</button>
+            </div>
+            <img id="outputImage" style="display:none; max-width:100%; border: 1px solid #ccc;"/>
+            <button id="confirmBtn" style="display: none;">Confirm</button>
+            <div class="crop-container" id="crops"></div>
+        </div>
+        <script>
+            let captureBtn = document.getElementById("captureBtn");
+            const cameraElement = document.getElementById('camera');
+            const outputImage = document.getElementById('outputImage');
+            let confirmBtn = document.getElementById("confirmBtn");
+            const cropsDiv = document.getElementById("crops");
+            let capturedImageData = "";
+            
+            
+            
+
+            
+            function startCamera() {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                // Request access to the user's rear camera (facingMode: "environment")
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                    .then(function(stream) {
+                        // Set the video element to stream from the camera
+                        cameraElement.srcObject = stream;
+                        // sendFrameToServer();
+                    })
+                    .catch(function(error) {
+                        console.error('Error accessing the camera: ', error);
+                        alert('Camera access is required.');
+                    });
+            } else {
+                alert("Your browser does not support camera access.");
+            }
+
+    }
+
+   
+ captureBtn.addEventListener('click', function() {
+        console.log("fired")
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+
+            // Set the canvas size to match the video frame size
+            canvas.width = cameraElement.videoWidth;
+            canvas.height = cameraElement.videoHeight;
+
+            // Draw the current frame from video on the canvas
+            context.drawImage(cameraElement, 0, 0, canvas.width, canvas.height);
+
+            // Convert the canvas to a base64 image string
+            const imageData = canvas.toDataURL('image/jpeg');
+            capturedImageData = imageData;
+
+            // Send the image to the server for prediction
+            fetch('/predict', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: imageData }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Display the image with bounding boxes on the client side
+                console.log(data)
+                outputImage.style.display = 'block';
+                outputImage.src = data.image_with_bboxes;
+                confirmBtn.style.display = "block";
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+
+        function logout() {
+            fetch('/logout', {
+                method: 'POST',
+                credentials: 'include'
+            })
+            .then(res => res.json())
+            .then(response => {
+                if (response.success) {
+                    alert("Logged out successfully.");
+                    window.top.location.href = 'login.html';
+                }
+            })
+            .catch(err => {
+                console.error("Logout error:", err);
+            });
+        }
+
+
+
+            confirmBtn.addEventListener('click', ()=> {
+                fetch('/confirm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: capturedImageData }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Display the image with bounding boxes on the client side
+                console.log(data)
+                for (let crop of data["crops"]) {
+                    let img = document.createElement('img');
+                    img.src = crop.image;
+                    cropsDiv.appendChild(img);
+                }
+
+                window.location.href = "edit.html"
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+            })
+
+            window.addEventListener('load', () => {
+            startCamera();
+        });
+
+
+        </script>
+    </body>
+</html>

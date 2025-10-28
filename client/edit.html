@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Card Details</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            background-color: #f8f8f8;
+            font-family: Arial, sans-serif;
+        }
+
+        .template {
+            width: 90%;
+            max-width: 900px;
+            height: 100vh;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            animation: change 2s infinite;
+        }
+
+        .card-block {
+            background-color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card-block img {
+            width: 100%;
+            max-height: 250px;
+            object-fit: contain;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+        .field-group {
+            margin: 10px 0;
+        }
+
+        .field-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: bold;
+        }
+
+        .field-group input {
+            width: 100%;
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+        .save-btn, .remove-btn {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        #save {
+            margin-top: 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4c8bf5;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        @keyframes change {
+            0% { color: red; }
+            50% { color: #4c8bf5; }
+            100% { color: #34a853; }
+        }
+    </style>
+</head>
+<body>
+    <div class="template">
+        <h1>Edit Card Details</h1>
+        <div id="cards-container"></div>
+        <button id="save">Save All</button>
+    </div>
+
+    <script>
+        // Fetch extracted data from the backend
+        let saveBtn = document.getElementById('save');
+
+        fetch('/extract')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('cards-container');
+                data.forEach(entry => {
+                    const card = document.createElement('div');
+                    card.className = 'card-block';
+
+                    card.innerHTML = `
+                        <img src="${entry.image}" alt="Business Card" />
+                        <div class="field-group">
+                            <label>Name:</label>
+                            <input type="text" value="${entry.details.name || ''}" />
+                        </div>
+                        <div class="field-group">
+                            <label>Company Name:</label>
+                            <input type="text" value="${entry.details.company_name || ''}" />
+                        </div>
+                        <div class="field-group">
+                            <label>Phone Number:</label>
+                            <input type="text" value="${entry.details.phone_number || ''}" />
+                        </div>
+                        <div class="field-group">
+                            <label>Email:</label>
+                            <input type="text" value="${entry.details.email || ''}" />
+                        </div>
+                        <button class="save-btn" onclick="saveCard(this)" data-id="${entry.id}">Save Changes</button>
+                        <button class="remove-btn" onclick="removeCard(this)" data-id="${entry.id}">Remove</button>
+                    `;
+                    container.appendChild(card);
+                });
+
+
+            });
+
+        function saveCard(button) {
+            const cardBlock = button.parentElement;
+            const inputs = cardBlock.querySelectorAll('input');
+            const id = parseInt(button.getAttribute('data-id'));
+            const updated = {
+                "id": id,
+
+                "details": {
+                    name: inputs[0].value,
+                    company_name: inputs[1].value,
+                    phone_number: inputs[2].value,
+                    email: inputs[3].value
+                }
+
+            };
+            
+            fetch('/update_card', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updated)
+            })
+            .then(res => res.json())
+            .then(response => {
+        if (response.success) {
+          console.log("successful");
+          alert("Changes Saved");
+        } else {
+          console.log("fail")
+        }
+      })
+      .catch(err => {
+        console.error("Update error:", err);
+      });
+    }
+
+    function removeCard(button) {
+            const id = parseInt(button.getAttribute('data-id'));
+
+            fetch('/remove_card', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            })
+            .then(res => res.json())
+            .then(response => {
+                if (response.success) {
+                    button.parentElement.remove();
+                    alert("Card removed successfully");
+                } else {
+                    alert("Removal failed");
+                }
+            })
+            .catch(err => {
+                console.error("Remove error:", err);
+            });
+        }
+
+    saveBtn.addEventListener('click', ()=> {
+        fetch('/save_final', {
+            method: 'POST'
+        })
+        .then(res=> res.json())
+        .then(response => {
+            if (response.success) {
+                alert("Saved All Successfully");
+            } else {
+                alert("Saved Failed");
+            }
+        }).catch(err => {
+        console.error("Final save error:", err);
+        alert("Server error");
+      });
+    });
+        
+    </script>
+</body>
+</html>
