@@ -32,9 +32,7 @@ A full-stack pipeline that turns physical business cards into structured digital
 
 ### 1. Scan & detect business cards
 
-<p align="center">
-  <video src="assets/scan.mp4" width="480" controls muted playsinline></video>
-</p>
+https://github.com/user-attachments/assets/e0fdaea9-2890-4a9c-8a1a-bc6291a3ce8f
 
 ### 2. Review + edit extracted contact info
 
