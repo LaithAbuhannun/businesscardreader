@@ -39,9 +39,7 @@ https://github.com/user-attachments/assets/e0fdaea9-2890-4a9c-8a1a-bc6291a3ce8f
 https://github.com/user-attachments/assets/4dfaaf35-2d6c-4ba5-9d7f-4880a0c20896
 ### 3. Saved contacts view
 
-<p align="center">
-  <video src="assets/saved-contacts.mp4" width="480" controls muted playsinline></video>
-</p>
+https://github.com/user-attachments/assets/5726adfd-5aa7-4b21-b039-2d4d73a8e052
 
 ---
 
@@ -167,13 +165,6 @@ Later this can become CSV export, vCard export, or automatic CRM import.
 businesscardreader/
 ├─ README.md                # <-- this file
 
-├─ assets/
-│   ├─ scan.mp4             # step 1 video: scanning / detection
-│   ├─ review-edit.mp4      # step 2 video: review + edit extracted info
-│   ├─ saved-contacts.mp4   # step 3 video: saved contacts list
-│   ├─ bbox-example.png     # (optional) screenshot with bounding box around a card
-│   └─ architecture.png     # (optional) block diagram of the system flow
-
 ├─ client/                  # frontend (browser UI)
 │   ├─ login.html           # login / signup screen
 │   ├─ index.html           # main upload / capture / scan screen
@@ -215,7 +206,7 @@ businesscardreader/
 * `client/` is the browser UI. It talks to the backend using `fetch()`.
 * `server/` is Flask + YOLO inference + OpenAI vision extraction + session logic + saving.
 * `model/` is your YOLO training notebook so people can see you actually trained the model.
-* `assets/` is just for README media and visuals.
+
 
 ---
 
