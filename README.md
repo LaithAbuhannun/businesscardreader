@@ -1,21 +1,3 @@
-That’s actually perfect. That’s even better than one long video, because now you can literally walk people through the product story step by step in the README.
-
-Here’s what we’ll do:
-
-* Put all 3 short mp4 clips in `assets/`
-
-  * `scan.mp4`          → the scanning / detection step
-  * `review-edit.mp4`   → the review table where you can edit/delete
-  * `saved-contacts.mp4`→ the final saved contacts list
-
-* Then we’ll show them in the README in a “Demo” section, one after another with captions.
-
-Because each one is short, they should all be small enough for GitHub to inline-play.
-
-Below is your new full README. Copy this entire thing and paste it into `README.md` (replace whatever is there now). Just make sure the filenames match what you actually upload to `assets/`.
-
----
-
 # 🪪 Business Card Reader
 
 A full-stack pipeline that turns physical business cards into structured digital contacts.
