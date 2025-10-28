@@ -10,8 +10,6 @@ A full-stack pipeline that turns physical business cards into structured digital
 - Saves the final cleaned contacts into a local database for that user.
 
 <p align="center">
-  <!-- You already created assets/demo.mov. GitHub will render this as a downloadable / playable file. -->
-  <!-- If GitHub does not auto-play inline in your browser, it will still show as a clickable video link. -->
   <video src="assets/demo.mov" width="600" controls muted playsinline></video>
 </p>
 
