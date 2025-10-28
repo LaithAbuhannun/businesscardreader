@@ -1,32 +1,68 @@
-````markdown
+That’s actually perfect. That’s even better than one long video, because now you can literally walk people through the product story step by step in the README.
+
+Here’s what we’ll do:
+
+* Put all 3 short mp4 clips in `assets/`
+
+  * `scan.mp4`          → the scanning / detection step
+  * `review-edit.mp4`   → the review table where you can edit/delete
+  * `saved-contacts.mp4`→ the final saved contacts list
+
+* Then we’ll show them in the README in a “Demo” section, one after another with captions.
+
+Because each one is short, they should all be small enough for GitHub to inline-play.
+
+Below is your new full README. Copy this entire thing and paste it into `README.md` (replace whatever is there now). Just make sure the filenames match what you actually upload to `assets/`.
+
+---
+
 # 🪪 Business Card Reader
 
 A full-stack pipeline that turns physical business cards into structured digital contacts.
 
-- Detects one or more business cards in an image using a custom-trained YOLO model.
-- Crops each detected card.
-- Uses vision AI to read each cropped card and extract contact details (name / company / phone / email).
-- Lets you review, edit, delete, and approve those results in the browser.
-- Saves the final cleaned contacts into a local database for that user.
+* Detects one or more business cards in an image using a custom-trained YOLO model.
+* Crops each detected card.
+* Uses vision AI to read each cropped card and extract contact details (name / company / phone / email).
+* Lets you review, edit, delete, and approve those results in the browser.
+* Saves the final cleaned contacts into a local database for that user.
+
+---
+
+## 🔴 Live Demo
+
+### 1. Scan & detect business cards
 
 <p align="center">
-  <video src="assets/demo.mov" width="600" controls muted playsinline></video>
+  <video src="assets/scan.mp4" width="480" controls muted playsinline></video>
+</p>
+
+### 2. Review + edit extracted contact info
+
+<p align="center">
+  <video src="assets/review-edit.mp4" width="480" controls muted playsinline></video>
+</p>
+
+### 3. Saved contacts view
+
+<p align="center">
+  <video src="assets/saved-contacts.mp4" width="480" controls muted playsinline></video>
 </p>
 
 ---
 
 ## 📌 Problem this solves
 
-Manually typing business card info into your phone or into a CRM is annoying and easy to forget.
+Typing business card info into your phone or into a CRM is slow and annoying.
 
 This project makes that automatic:
+
 1. Take a photo / upload a photo that contains one or more business cards.
 2. The system finds and crops each card on its own.
 3. It reads text on those cards and pulls out structured info.
 4. You quickly confirm/fix it.
 5. It saves those contacts for you.
 
-The core idea: **scan → approve → done.**  
+The core idea: **scan → approve → done.**
 No more typing names, phone numbers, and emails from paper.
 
 ---
@@ -64,7 +100,7 @@ No more typing names, phone numbers, and emails from paper.
     v
 [ final_database.json ]
     - Becomes your personal contact list (per user session)
-````
+```
 
 So the pipeline is:
 **Upload → Detect → Crop → AI Extract → Review/Edit → Save.**
@@ -91,7 +127,7 @@ So the pipeline is:
 * After detection, each bounding box is sliced out into its own file:
 
   * `crop_0.jpg`, `crop_1.jpg`, `crop_2.jpg`, …
-* These crops are basically “just the card”, cleaned up so OCR/vision can focus only on the card.
+* These crops are basically “just the card,” cleaned up so OCR/vision can focus only on the card.
 
 ### 🧾 Contact extraction with vision AI
 
@@ -113,7 +149,7 @@ This step is what turns pixels into usable contact info.
 
   * fix spelling,
   * correct numbers,
-  * delete a card that you don’t want.
+  * delete a card you don’t want.
 * The frontend calls:
 
   * `PUT /update_card` to update the stored info for one card.
@@ -137,9 +173,11 @@ businesscardreader/
 ├─ README.md                # <-- this file
 
 ├─ assets/
-│   ├─ demo.mov             # your recorded demo video
-│   ├─ bbox-example.png     # (optional) screenshot showing detection box on card
-│   └─ architecture.png     # (optional) a simple diagram of the flow
+│   ├─ scan.mp4             # step 1 video: scanning / detection
+│   ├─ review-edit.mp4      # step 2 video: review + edit extracted info
+│   ├─ saved-contacts.mp4   # step 3 video: saved contacts list
+│   ├─ bbox-example.png     # (optional) screenshot with bounding box around a card
+│   └─ architecture.png     # (optional) block diagram of the system flow
 
 ├─ client/                  # frontend (browser UI)
 │   ├─ login.html           # login / signup screen
@@ -150,7 +188,7 @@ businesscardreader/
 │   ├─ results.html         # shows saved contacts after you confirm/save
 │   ├─ edit.html            # focused edit of one contact's fields
 │   ├─ style.css            # shared styling for all pages
-│   └─ bcrlogo.png          # project logo / branding
+│   └─ bcrlogo.png          # project branding / logo
 
 ├─ server/                  # backend + inference + persistence
 │   ├─ server.py            # Flask app (port 5500)
@@ -168,7 +206,7 @@ businesscardreader/
 │   ├─ lat.jpg              # example raw photo used for testing
 │   ├─ runs/
 │   │   └─ best.pt          # YOLO weights (custom trained business-card detector)
-│   ├─ package.json         # if using Node or tooling around the backend
+│   ├─ package.json         # if using Node/tooling for backend dev tasks
 │   ├─ package-lock.json
 │   └─ requirements.txt     # Flask, flask-cors, ultralytics, opencv-python, pillow,
 │                           # numpy, albumentations, openai, etc.
@@ -179,10 +217,10 @@ businesscardreader/
 
 ### Notes on structure
 
-* `client/` is the browser UI. It talks to the backend using `fetch()` calls.
-* `server/` is the Flask backend + YOLO inference + OpenAI vision extraction.
-* `model/` is your training notebook so people can see you actually trained a detector.
-* `assets/` is only for README visuals (your `demo.mov`, screenshots, diagrams). The app does not load anything from `assets/` at runtime.
+* `client/` is the browser UI. It talks to the backend using `fetch()`.
+* `server/` is Flask + YOLO inference + OpenAI vision extraction + session logic + saving.
+* `model/` is your YOLO training notebook so people can see you actually trained the model.
+* `assets/` is just for README media and visuals.
 
 ---
 
@@ -203,13 +241,13 @@ businesscardreader/
 
 * `POST /predict`
 
-  * Accepts an uploaded image (e.g. from the browser).
+  * Accepts an uploaded image (from the browser).
   * Loads the trained YOLO model from `server/runs/best.pt`.
   * Runs inference to detect business cards.
   * Returns:
 
     * bounding box coordinates
-    * a preview image with boxes drawn so the UI can show the result
+    * a preview image with boxes drawn so the UI can show the result.
 
 **3. Crop and extract contact info**
 
@@ -254,19 +292,20 @@ businesscardreader/
 
 * The YOLO weights live in `server/runs/best.pt`.
 * This model is custom trained to detect “business card” as an object.
-* This is not generic COCO; it’s your own card detector.
+* This is not a generic COCO model — it’s specialized for cards.
 
 ### Vision LLM extraction
 
 * After cropping, each card image is sent to an AI vision model.
-* The prompt basically says: “Extract name / company / email / phone from this business card image and return valid JSON.”
-* That result gets associated with the logged-in user session so you can edit it.
+* The prompt says basically:
+  “Extract name / company / phone / email from this business card image and return valid JSON.”
+* That result is stored for the logged-in session so the UI can show/edit it.
 
 ---
 
 ## 🖥 Frontend details (client/)
 
-All the pages in `client/` are simple HTML/CSS/JS. They talk to `server.py` using `fetch()`.
+All the pages in `client/` are static HTML/CSS/JS. They call the Flask backend.
 
 Typical user flow:
 
@@ -277,52 +316,50 @@ Typical user flow:
 
 2. `index.html` / `upload.html`
 
-   * User uploads a photo containing one or more business cards.
-   * Frontend calls `/predict` with that image.
-   * Backend responds with bounding boxes and a preview.
+   * User uploads a photo with one or more cards.
+   * Frontend calls `/predict`.
+   * Backend responds with bounding boxes and a preview image.
 
 3. `image.html`
 
-   * Shows the preview with boxes drawn around each detected card.
-   * User confirms.
+   * Shows that preview with drawn boxes so user can confirm detection.
 
 4. `tab.html`
 
    * Calls `/extract` and displays all the parsed contact info.
-   * User can edit fields (via `/update_card`) or delete a card (via `/remove_card`).
+   * User can edit fields (`/update_card`) or delete bad cards (`/remove_card`).
 
 5. `results.html`
 
-   * After user presses save, `/save_final` writes those contacts to `final_database.json`.
+   * After the user presses save, `/save_final` writes those contacts to `final_database.json`.
    * The saved list is shown here, acting like a mini contact book.
 
 6. `edit.html`
 
-   * Page for focused editing of a single contact’s details (useful if you want a clean form view instead of inline edit).
+   * Focused edit screen for one contact's details.
 
 7. `style.css`
 
-   * Shared styling so the UI looks consistent.
+   * Shared styling.
 
 8. `bcrlogo.png`
 
-   * Logo / branding for the app header.
+   * Branding / logo.
 
 ---
 
 ## 🧪 Model training (model/)
 
-The `model/` directory contains `yolo-final.ipynb`. That notebook documents:
+The `model/` directory contains `yolo-final.ipynb`. That notebook shows:
 
 * how the YOLO model was trained,
-* what the dataset looks like (images of business cards from different angles / lighting),
-* what augmentations you used (rotations, brightness/contrast changes, flips, etc.),
-* evaluation / accuracy,
-* and how you exported `best.pt`.
+* what data/augmentations were used (angles, lighting, rotations, brightness/contrast),
+* evaluation/accuracy,
+* exporting the final weights.
 
-The exported weights were then copied into `server/runs/best.pt`, and that’s what the Flask backend uses for live detection.
+Those final weights were copied into `server/runs/best.pt`, which is what `server.py` loads for live detection.
 
-This is important for credibility: it shows this is not just a hardcoded demo — you actually trained the detector.
+This proves the detector is truly trained, not just downloaded.
 
 ---
 
@@ -344,18 +381,18 @@ pip install -r requirements.txt
 python server.py
 ```
 
-Now the Flask API should be running (default in this project: port 5500).
+Now the Flask API should be running (default: port 5500).
 
 Make sure:
 
 * `server/runs/best.pt` exists (your YOLO weights).
-* Your OpenAI API key is correctly set in `server.py` where the vision extraction calls happen.
+* Your OpenAI API key is correctly set in `server.py` where the vision extraction happens.
 
 ### 2. Frontend
 
-Open the HTML files in `client/` in your browser, starting from `login.html` (or `index.html` if you’re skipping auth for testing).
+Open the HTML files in `client/` in your browser, starting from `login.html` (or `index.html` if you skip auth for testing).
 
-Those pages will call the backend endpoints like `/predict`, `/confirm`, `/extract`, etc. on `http://localhost:5500/`.
+Those pages will call backend endpoints like `/predict`, `/confirm`, `/extract`, etc. on `http://localhost:5500/`.
 
 ---
 
@@ -375,14 +412,7 @@ Those pages will call the backend endpoints like `/predict`, `/confirm`, `/extra
 
 ## ⚠️ Notes
 
-* `final_database.json` right now is acting like a tiny local CRM file keyed by user.
-  In production you would replace it with a proper database.
-* `crop_*.jpg` files in `server/` are examples from a real run. They’re good to keep in the repo because they prove it actually works.
-* `assets/demo.mov` is only for showing the demo in this README. The running app does not depend on it.
+* `final_database.json` right now is acting like a tiny local CRM file keyed by user. In production you’d replace it with a proper database.
+* `crop_*.jpg` files in `server/` are examples from a real run. Keep them — they prove this is real.
+* Videos in `assets/` are split (`scan.mp4`, `review-edit.mp4`, `saved-contacts.mp4`) so GitHub can render them inline instead of refusing due to size.
 * Never commit real API keys or real customer data.
-
----
-
-```
-::contentReference[oaicite:0]{index=0}
-```
