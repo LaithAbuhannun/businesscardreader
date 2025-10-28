@@ -375,12 +375,3 @@ Those pages will call backend endpoints like `/predict`, `/confirm`, `/extract`,
 * [ ] Export to CSV / vCard
 * [ ] Responsive mobile UI (scan directly from phone camera)
 * [ ] Hosted / deployed version (no local setup required)
-
----
-
-## ⚠️ Notes
-
-* `final_database.json` right now is acting like a tiny local CRM file keyed by user. In production you’d replace it with a proper database.
-* `crop_*.jpg` files in `server/` are examples from a real run. Keep them — they prove this is real.
-* Videos in `assets/` are split (`scan.mp4`, `review-edit.mp4`, `saved-contacts.mp4`) so GitHub can render them inline instead of refusing due to size.
-* Never commit real API keys or real customer data.
