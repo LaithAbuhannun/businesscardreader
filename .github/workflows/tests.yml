@@ -36,7 +36,7 @@ jobs:
             exit 1
           fi
       - name: Static security scan (bandit)
-        run: bandit -r server -x server/tests,server/venv,server/.venv
+        run: bandit -r server -x server/tests,server/venv,server/.venv,server/certs
       - name: Dependency vulnerability scan (pip-audit)
         # Resolves the dependency tree without installing it, so PyTorch is not downloaded.
         run: pip-audit -r server/requirements.txt -r server/requirements-dev.txt --progress-spinner off

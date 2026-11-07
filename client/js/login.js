@@ -25,7 +25,7 @@ async function login() {
     try {
         await whileBusy(loginButton, 'Logging in…', () =>
             api('/login_authorization', { method: 'POST', body, redirectOn401: false }));
-        window.location.href = 'index.html';
+        window.location.href = 'upload.html';
     } catch (error) {
         showMessage(errorText(error));
     }

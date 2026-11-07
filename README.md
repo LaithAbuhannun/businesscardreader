@@ -153,21 +153,18 @@ businesscardreader/
 
 ├─ client/                  # frontend (browser UI)
 │   ├─ login.html           # login / signup screen
-│   ├─ index.html           # main upload / capture / scan screen
-│   ├─ upload.html          # optional upload flow variation
-│   ├─ image.html           # shows detected bounding boxes / preview
-│   ├─ tab.html             # review extracted info for each card (edit/delete before save)
-│   ├─ results.html         # shows saved contacts, with CSV / vCard download
-│   ├─ edit.html            # focused edit of one contact's fields
+│   ├─ upload.html          # scan screen: live camera or "Take or choose photo"
+│   ├─ edit.html            # review / edit / remove extracted cards before saving
+│   ├─ results.html         # saved contacts, with CSV / vCard download
+│   ├─ index.html           # forwards to upload.html (old entry point)
 │   ├─ js/
-│   │   ├─ common.js        # shared API helper + on-page error/status messages
-│   │   └─ login.js, upload.js, edit.js, results.js   # one script per page
-│   ├─ messages.css         # styling for the message box
-│   ├─ style.css            # shared styling for all pages
-│   └─ bcrlogo.png          # project branding / logo
+│   │   ├─ common.js        # shared API helper, on-page messages, log-out button
+│   │   └─ login.js, upload.js, edit.js, results.js, index.js   # one script per page
+│   ├─ app.css              # all styling, mobile first
+│   └─ bcrlogo.png, bcrlogo-small.png   # logo (small one is used in the UI)
 
 ├─ server/                  # backend + inference + persistence
-│   ├─ server.py            # Flask app (port 5500)
+│   ├─ server.py            # Flask app (port 5500); `--phone` serves HTTPS on your Wi-Fi
 │   │                       # Endpoints include:
 │   │                       #   /signup_authorization, /login_authorization, /logout
 │   │                       #   /predict  (YOLO detection)
@@ -181,9 +178,11 @@ businesscardreader/
 │   ├─ tests/
 │   │   ├─ test_app.py      # feature tests (model and LLM are faked, no API key needed)
 │   │   ├─ test_security.py # attack tests: auth, sessions, brute force, uploads, XSS, CSRF…
+│   │   ├─ test_phone.py    # phone mode (HTTPS certificate) and small-screen layout
 │   │   ├─ conftest.py      # shared fixtures
 │   │   └─ helpers.py       # fake detector / extractor and request helpers
 │   ├─ data/                # created at runtime: accounts.json + contacts.json (git-ignored)
+│   ├─ certs/               # created by --phone: self-signed HTTPS certificate (git-ignored)
 │   ├─ requirements.txt     # runtime dependencies
 │   └─ requirements-dev.txt # test + security-scan dependencies (no PyTorch needed)
 
@@ -250,7 +249,7 @@ businesscardreader/
 
 * `GET /extract`
   Returns all pending extracted cards for the current user.
-  The frontend uses this to show a table of contacts in `tab.html`.
+  The frontend uses this to show the cards for review in `edit.html`.
 
 * `PUT /update_card`
   Update one of the extracted contacts (fix a name, correct a number, etc.).
@@ -299,20 +298,19 @@ Typical user flow:
    * User signs up or logs in.
    * After login, session is established on the backend.
 
-2. `index.html` / `upload.html`
+2. `upload.html`
 
-   * User uploads a photo with one or more cards.
+   * User captures a photo with the live camera, or taps **Take or choose photo** to use the phone's camera app or photo library.
+   * Photos are shrunk to at most 2048 px in the browser first, so uploads are quick on mobile data.
    * Frontend calls `/predict`.
    * Backend responds with bounding boxes and a preview image.
 
-3. `image.html`
+3. The same page shows the preview with boxes drawn, and a **Confirm** button.
 
-   * Shows that preview with drawn boxes so user can confirm detection.
-
-4. `tab.html`
+4. `edit.html`
 
    * Calls `/extract` and displays all the parsed contact info.
-   * User can edit fields (`/update_card`) or delete bad cards (`/remove_card`).
+   * User can edit fields (`/update_card`) or delete bad cards (`/remove_card`), then **Save all**.
 
 5. `results.html`
 
@@ -320,17 +318,9 @@ Typical user flow:
    * The saved list is shown here, acting like a mini contact book.
    * **Download CSV** / **Download vCard** export the list.
 
-6. `edit.html`
+6. `app.css`
 
-   * Focused edit screen for one contact's details.
-
-7. `style.css`
-
-   * Shared styling.
-
-8. `bcrlogo.png`
-
-   * Branding / logo.
+   * One mobile-first stylesheet for every page: single column on phones, large buttons, no fixed widths.
 
 ---
 
@@ -384,6 +374,34 @@ Detection keeps boxes scoring at least `0.25` (override with `BCR_CONFIDENCE`), 
 The Flask server also serves the UI. Open **http://127.0.0.1:5500** and sign up, then log in.
 (The camera works on `localhost`/`127.0.0.1`; anywhere else it needs HTTPS.)
 
+### 📱 Using it on your phone
+
+Phones can't use `127.0.0.1` (that's the phone itself), and browsers only allow the live
+camera over HTTPS. Phone mode handles both:
+
+```bash
+cd server
+source venv/bin/activate
+python server.py --phone
+```
+
+It prints an address like `https://192.168.1.101:5500`. With the phone on the **same Wi-Fi**:
+
+1. Open that address on the phone.
+2. The browser warns that the connection isn't private. That's because the certificate was
+   made on your computer, not by a public authority. Tap **Show Details → visit this website**
+   (Safari) or **Advanced → Proceed** (Chrome). You only do this once; the certificate is saved
+   in `server/certs/` and reused until your computer's IP address changes.
+3. Sign up / log in, allow camera access, and scan.
+
+If the live camera still won't start, tap **Take or choose photo**: it opens the phone's
+own camera app and works even without HTTPS.
+
+While phone mode runs, anyone on the same Wi-Fi can reach the login page, so use it on a
+network you trust and stop it (Ctrl+C) when you're done. If the phone can't connect at all,
+check that both are on the same network and that the computer's firewall allows incoming
+connections for Python.
+
 ### 3. Tests and security scans
 
 ```bash
@@ -392,7 +410,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q                         # feature + security tests
 
 cd ..
-bandit -r server -x server/tests,server/venv   # static security scan of the code
+bandit -r server -x server/tests,server/venv,server/certs   # static security scan of the code
 pip-audit -r server/requirements.txt -r server/requirements-dev.txt   # known-vulnerable dependencies
 ```
 
@@ -417,10 +435,10 @@ GitHub Actions runs the tests, bandit and pip-audit on every push and pull reque
 * **Every data endpoint requires login**, and each user can only read or change their own cards.
 * **Uploads** are capped at 10 MB and 25 megapixels (checked before decoding), and must actually be JPEG, PNG or WebP: other formats Pillow can read are refused even if labelled as one of those. Crop boxes are clamped to the image.
 * **AI cost:** at most 10 cards are read per scan, and each scan can be confirmed only once, so repeated requests can't run up OpenAI charges.
-* **AI output is treated as untrusted.** The prompt tells the model card text is data, not instructions; the response is reduced to the four expected string fields with a length cap; and the UI inserts it with `textContent`, never `innerHTML`, so a card can't inject script. The CSP allows no inline scripts. CSV export prefixes formula-like cells with `'` so spreadsheets don't run them, and vCard export escapes values so a card can't add extra fields.
+* **AI output is treated as untrusted.** The prompt tells the model card text is data, not instructions; the response is reduced to the four expected string fields with a length cap; and the UI inserts it with `textContent`, never `innerHTML`, so a card can't inject script. The CSP allows no inline scripts or styles. CSV export prefixes formula-like cells with `'` so spreadsheets don't run them, and vCard export escapes values so a card can't add extra fields.
 * **Privacy:** card images are sent with `store=False`, user data lives in a git-ignored folder, and errors return generic messages while details go to the server log.
 * **Headers:** Content-Security-Policy, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`.
-* The server binds to `127.0.0.1` by default. Working state is kept in memory, so run a single process.
+* The server binds to `127.0.0.1` by default. Only `--phone` listens on the network, and only over HTTPS with `Secure` cookies; its private key is saved readable only by you. Working state is kept in memory, so run a single process.
 
 ---
 
@@ -435,5 +453,5 @@ GitHub Actions runs the tests, bandit and pip-audit on every push and pull reque
 * [x] Hashed passwords, input validation, security headers and a test suite
 * [x] Export to CSV / vCard
 * [x] Security test suite, bandit and pip-audit in CI
-* [ ] Responsive mobile UI (scan directly from phone camera)
+* [x] Responsive mobile UI (scan directly from phone camera)
 * [ ] Hosted / deployed version (no local setup required)

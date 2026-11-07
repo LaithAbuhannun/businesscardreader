@@ -1,0 +1,250 @@
+/* Shared styles for every page. Mobile first: phones get one column and
+   big touch targets; wider screens just get more room. */
+
+:root {
+    --blue: #4c8bf5;
+    --blue-dark: #2f6ad0;
+    --green: #34a853;
+    --red: #d93025;
+    --text: #222;
+    --muted: #666;
+    --line: #ddd;
+    --bg: #f5f6f8;
+    --card: #fff;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+img, video { max-width: 100%; display: block; }
+
+[hidden] { display: none !important; }
+
+/* ---------- Top bar ---------- */
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    font-weight: bold;
+    font-size: 18px;
+    text-decoration: none;
+}
+
+.brand img { width: 36px; height: 36px; }
+
+.topbar nav { display: flex; align-items: center; gap: 4px; }
+
+.topbar nav a,
+.link-button {
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--blue-dark);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.topbar nav a[aria-current="page"] { background: #e8f0fe; }
+
+/* ---------- Page ---------- */
+
+.page {
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 16px 12px 40px;
+    padding-bottom: max(40px, env(safe-area-inset-bottom));
+}
+
+.title {
+    margin: 4px 0 16px;
+    text-align: center;
+    font-size: 26px;
+    animation: change 2s infinite;
+}
+
+@keyframes change {
+    0% { color: red; }
+    50% { color: var(--blue); }
+    100% { color: var(--green); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .title { animation: none; color: var(--text); }
+}
+
+.hint { color: var(--muted); text-align: center; margin: 0 0 12px; }
+
+/* ---------- Buttons ---------- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 12px 20px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--blue);
+    color: #fff;
+    font: inherit;
+    font-weight: bold;
+    text-align: center;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.btn.green { background: var(--green); }
+.btn.red { background: var(--red); }
+.btn.outline { background: var(--card); color: var(--blue-dark); border: 2px solid var(--blue); }
+.btn.wide { width: 100%; }
+
+button:disabled { opacity: 0.6; cursor: wait; }
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.actions > * { flex: 1 1 160px; }
+
+/* ---------- Scan page ---------- */
+
+.camera-box {
+    overflow: hidden;
+    border-radius: 12px;
+    background: #111;
+}
+
+.camera-box video { width: 100%; max-height: 60vh; object-fit: cover; }
+
+.preview {
+    width: 100%;
+    margin: 12px 0;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+
+/* Keeps the file input usable (labels can open it) while hiding it. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* ---------- Cards (edit + results) ---------- */
+
+.card-block {
+    margin-bottom: 16px;
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--card);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-block img {
+    width: 100%;
+    max-height: 240px;
+    object-fit: contain;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.field-group { margin: 12px 0; }
+
+.field-group label { display: block; margin-bottom: 4px; font-weight: bold; }
+
+.field-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px; /* 16px stops iPhones zooming in on focus */
+}
+
+.field-group span { display: block; color: #444; overflow-wrap: anywhere; }
+
+.card-note { margin: 10px 0 0; color: #8a1c13; }
+
+.card-buttons { display: flex; gap: 10px; }
+
+.card-buttons .btn { flex: 1; }
+
+.sticky-bottom {
+    position: sticky;
+    bottom: 0;
+    padding: 10px 0 max(10px, env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--bg) 30%);
+}
+
+/* ---------- Login ---------- */
+
+.login-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 16px;
+}
+
+.login-box {
+    width: 100%;
+    max-width: 400px;
+    padding: 24px;
+    border-radius: 12px;
+    background: var(--card);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.login-box .logo { width: 72px; height: 72px; margin: 0 auto 8px; }
+
+.login-box .btn { width: 100%; margin-top: 10px; }
+
+/* ---------- Messages (shown by js/common.js) ---------- */
+
+.message {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 16px;
+}
+
+.message-error { background: #fdecea; color: #8a1c13; border: 1px solid #f5c2bd; }
+.message-success { background: #e7f5ea; color: #1d5e2c; border: 1px solid #b9e0c2; }
+.message-info { background: #e8f0fe; color: #1a4b9c; border: 1px solid #bcd0f7; }

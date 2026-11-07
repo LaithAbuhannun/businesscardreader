@@ -39,7 +39,7 @@ async function api(path, { method = 'GET', body, redirectOn401 = true, raw = fal
     }
 
     if (response.status === 401 && redirectOn401) {
-        window.top.location.href = 'login.html';
+        window.location.href = 'login.html';
         throw new ApiError('Your session has ended. Please log in again.', 401);
     }
 
@@ -102,4 +102,17 @@ function cardImage(src) {
     img.alt = 'Business card';
     if (typeof src === 'string' && src.startsWith('data:image/')) img.src = src;
     return img;
+}
+
+// The "Log out" button in the top bar, on every page that has one.
+const logoutButton = document.getElementById('logoutBtn');
+if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+        try {
+            await api('/logout', { method: 'POST' });
+        } catch (error) {
+            console.error('Logout error:', error);  // leave anyway; the session is cleared or already gone
+        }
+        window.location.href = 'login.html';
+    });
 }

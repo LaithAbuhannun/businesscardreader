@@ -41,8 +41,10 @@ function renderCard(entry) {
         group.append(labelEl, input);
         card.appendChild(group);
     });
-    card.appendChild(actionButton('Save Changes', 'save-btn', saveCard));
-    card.appendChild(actionButton('Remove', 'remove-btn', removeCard));
+    const buttons = document.createElement('div');
+    buttons.className = 'card-buttons';
+    buttons.append(actionButton('Save changes', 'btn', saveCard), actionButton('Remove', 'btn red', removeCard));
+    card.appendChild(buttons);
     return card;
 }
 

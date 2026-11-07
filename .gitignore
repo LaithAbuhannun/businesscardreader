@@ -3,6 +3,9 @@ server/data/
 server/final_database.json
 server/*.jpg
 
+# Phone-mode HTTPS certificate and private key (made on your computer)
+server/certs/
+
 # Secrets: .env and any variant like .env.local, but keep the example
 .env
 .env.*

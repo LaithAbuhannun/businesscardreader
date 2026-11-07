@@ -17,8 +17,13 @@ is loaded automatically (real environment variables win over it).
     BCR_COOKIE_SECURE   Set to 1 when served over HTTPS.
     BCR_SESSION_HOURS   How long a login lasts (default: 12).
     HOST / PORT         Bind address (default: 127.0.0.1:5500).
+
+Run "python server.py --phone" to use it from a phone on the same Wi-Fi: it serves
+HTTPS (needed for the phone's camera) on the local network with a self-signed
+certificate kept in server/certs/.
 """
 
+import argparse
 import base64
 import binascii
 import csv
@@ -28,10 +33,12 @@ import logging
 import os
 import re
 import secrets
+import socket
 import tempfile
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from ipaddress import ip_address
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
@@ -425,7 +432,7 @@ def create_app(config=None, detector=None, extractor=None):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
-            "script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; style-src 'self'; object-src 'none'; "
             "connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'"
         )
         if response.mimetype == "application/json":
@@ -666,6 +673,121 @@ def create_app(config=None, detector=None, extractor=None):
     return app
 
 
-if __name__ == "__main__":
+# ---------- Phone mode (HTTPS on the local network) ----------
+
+
+def local_network_ip():
+    """This computer's address on the Wi-Fi, or 127.0.0.1 if there is no network."""
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 80))  # UDP connect sends nothing; it just picks the outgoing interface
+        return probe.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        probe.close()
+
+
+def certificate_hosts(cert_path):
+    """The host names and IPs an existing certificate covers, or None if it's missing or expiring."""
+    from cryptography import x509
+
+    try:
+        cert = x509.load_pem_x509_certificate(Path(cert_path).read_bytes())
+    except (OSError, ValueError):
+        return None
+    if cert.not_valid_after_utc - datetime.now(timezone.utc) < timedelta(days=7):
+        return None
+    names = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    return {str(name) for name in names.get_values_for_type(x509.DNSName)} | {
+        str(ip) for ip in names.get_values_for_type(x509.IPAddress)
+    }
+
+
+def ensure_certificate(cert_dir, hosts):
+    """Create a self-signed HTTPS certificate for these hosts, reusing the saved one when it still fits.
+
+    Reusing it means the phone only has to accept the browser warning once,
+    until the computer's IP address changes.
+    """
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    cert_dir = Path(cert_dir)
+    cert_path, key_path = cert_dir / "cert.pem", cert_dir / "key.pem"
+    hosts = set(hosts)
+    if key_path.exists() and (certificate_hosts(cert_path) or set()) >= hosts:
+        return cert_path, key_path
+
+    names = []
+    for host in sorted(hosts):
+        try:
+            names.append(x509.IPAddress(ip_address(host)))
+        except ValueError:
+            names.append(x509.DNSName(host))
+    key = ec.generate_private_key(ec.SECP256R1())
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Business Card Reader (local)")])
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=5))
+        .not_valid_after(now + timedelta(days=365))
+        .add_extension(x509.SubjectAlternativeName(names), critical=False)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+
+    cert_dir.mkdir(parents=True, exist_ok=True)
+    key_bytes = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    )
+    # The private key is readable only by you.
+    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(key_bytes)
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    return cert_path, key_path
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Run the Business Card Reader server.")
+    parser.add_argument(
+        "--phone",
+        action="store_true",
+        help="serve HTTPS on your local network so a phone on the same Wi-Fi can use its camera",
+    )
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
-    create_app().run(host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", 5500)))
+    port = int(os.environ.get("PORT", 5500))
+
+    if not args.phone:
+        create_app().run(host=os.environ.get("HOST", "127.0.0.1"), port=port)
+        return
+
+    lan_ip = local_network_ip()
+    hostname = socket.gethostname().split(".")[0]
+    hosts = {"localhost", "127.0.0.1", lan_ip, f"{hostname}.local"}
+    cert_path, key_path = ensure_certificate(BASE_DIR / "certs", hosts)
+    print(
+        "\n  Phone mode: open this on your phone (same Wi-Fi as this computer):\n\n"
+        f"      https://{lan_ip}:{port}\n\n"
+        "  The browser will warn that the certificate isn't trusted, because it was made on\n"
+        "  this computer. Choose Advanced / Show Details, then continue to the site.\n"
+        "  Anyone on this Wi-Fi can reach the login page while this runs.\n",
+        flush=True,
+    )
+    app = create_app({"SESSION_COOKIE_SECURE": True})
+    # Listening on all interfaces is the point of phone mode: the phone connects over Wi-Fi.
+    host = os.environ.get("HOST", "0.0.0.0")  # nosec B104 - phone mode must accept Wi-Fi connections
+    app.run(host=host, port=port, ssl_context=(str(cert_path), str(key_path)))
+
+
+if __name__ == "__main__":
+    main()
