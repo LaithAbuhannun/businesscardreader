@@ -9,6 +9,8 @@ Configuration (environment variables):
     OPENAI_API_KEY      API key for the vision extraction step.
     BCR_OPENAI_MODEL    Vision model name (default: gpt-4o-mini).
     BCR_MODEL_PATH      Path to YOLO weights (default: server/runs/best.pt).
+    BCR_CONFIDENCE      Minimum detection confidence (default: 0.25).
+    BCR_IOU             Overlap threshold for merging boxes (default: 0.5, as in training).
     BCR_DATA_DIR        Where accounts and contacts are stored (default: server/data).
     BCR_COOKIE_SECURE   Set to 1 when served over HTTPS.
     HOST / PORT         Bind address (default: 127.0.0.1:5500).
@@ -96,7 +98,7 @@ class JsonStore:
 class YoloDetector:
     """Loads the YOLO weights once, on first use, and returns boxes plus an annotated preview."""
 
-    def __init__(self, weights_path, conf=0.5, iou=0.3):
+    def __init__(self, weights_path, conf=0.25, iou=0.5):
         self.weights_path = str(weights_path)
         self.conf = conf
         self.iou = iou
@@ -244,7 +246,11 @@ def create_app(config=None, detector=None, extractor=None):
     accounts = JsonStore(data_dir / "accounts.json")
     contacts = JsonStore(data_dir / "contacts.json")
 
-    detector = detector or YoloDetector(os.environ.get("BCR_MODEL_PATH", BASE_DIR / "runs" / "best.pt"))
+    detector = detector or YoloDetector(
+        os.environ.get("BCR_MODEL_PATH", BASE_DIR / "runs" / "best.pt"),
+        conf=float(os.environ.get("BCR_CONFIDENCE", 0.25)),
+        iou=float(os.environ.get("BCR_IOU", 0.5)),
+    )
     extractor = extractor or OpenAIExtractor(
         os.environ.get("OPENAI_API_KEY"), os.environ.get("BCR_OPENAI_MODEL", "gpt-4o-mini")
     )

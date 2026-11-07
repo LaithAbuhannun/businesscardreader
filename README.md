@@ -349,6 +349,7 @@ python server.py
 ```
 
 Make sure `server/runs/best.pt` exists (your YOLO weights).
+Detection keeps boxes scoring at least `0.25` (override with `BCR_CONFIDENCE`), and merges overlapping boxes at IoU `0.5`, the value used in training.
 
 ### 2. Frontend
 
