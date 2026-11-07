@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
     <style>
@@ -76,70 +77,24 @@
             100% { color: #34a853; }
         }
     </style>
+    <link rel="stylesheet" href="messages.css">
 </head>
 <body>
-    <div class="template">
+    <form class="template" id="login-form" novalidate>
         <h1>Login</h1>
+        <div id="message" hidden></div>
         <div class="input-group">
             <label for="email">Email:</label>
-            <input type="email" id="email" placeholder="Enter your email or username">
+            <input type="email" id="email" placeholder="you@example.com" autocomplete="username" required>
         </div>
         <div class="input-group">
             <label for="password">Password:</label>
-            <input type="password" id="password" placeholder="Enter your password">
+            <input type="password" id="password" placeholder="At least 8 characters" autocomplete="current-password" required>
         </div>
-        <button class="btn login-btn" onclick="login()">Login</button>
-        <button class="btn signup-btn" onclick="signup()">Sign Up</button>
-    </div>
-
-    <script>
-        function login() {
-            const email = document.getElementById('email').value.toLowerCase();
-            const password = document.getElementById('password').value;
-            fetch('/login_authorization', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email: email, password: password }),
-            })
-            .then(res=> res.json())
-            .then(response => {
-                if(response.success) {
-                    alert("Login Success");
-                    window.location.href = 'index.html';
-                } else {
-                    alert(response["error"])
-                }
-            })
-            .catch(err => {
-                console.error("Request error:", err);
-            });
-        }
-
-        function signup() {
-            const email = document.getElementById('email').value.toLowerCase();
-            const password = document.getElementById('password').value;
-            fetch('/signup_authorization', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email: email, password: password }),
-            })
-            .then(res=> res.json())
-            .then(response => {
-                if(response.success) {
-                    alert("Account created. You can now log in.");
-                } else {
-                    alert(response["error"])
-                }
-            })
-            .catch(err => {
-                console.error("Request error:", err);
-            });
-            
-        }
-    </script>
+        <button type="submit" class="btn login-btn" id="login-btn">Login</button>
+        <button type="button" class="btn signup-btn" id="signup-btn">Sign Up</button>
+    </form>
+    <script src="js/common.js"></script>
+    <script src="js/login.js"></script>
 </body>
 </html>

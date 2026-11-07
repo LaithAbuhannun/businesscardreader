@@ -1,5 +1,9 @@
+# Tests and security scans. No PyTorch needed: tests fake the model and the LLM.
 flask>=3.0,<4
 werkzeug>=3.0,<4
 numpy>=1.26
 pillow>=10.3
+python-dotenv>=1.0
 pytest>=8
+bandit>=1.7.9
+pip-audit>=2.7

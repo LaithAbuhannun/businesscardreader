@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scanned Card Results</title>
     <style>
@@ -59,57 +60,46 @@
             color: #444;
         }
 
+        .export-bar {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .export-bar[hidden] {
+            display: none;
+        }
+
+        .export-bar button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4c8bf5;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
         @keyframes change {
             0% { color: red; }
             50% { color: #4c8bf5; }
             100% { color: #34a853; }
         }
     </style>
+    <link rel="stylesheet" href="messages.css">
 </head>
 <body>
     <div class="template">
         <h1>Scanned Business Cards</h1>
+        <div id="message" hidden></div>
+        <div id="export-bar" class="export-bar" hidden>
+            <button type="button" id="export-csv">Download CSV</button>
+            <button type="button" id="export-vcf">Download vCard</button>
+        </div>
         <div id="results-container"></div>
     </div>
-
-    <script>
-        // Saved text is inserted with textContent, never innerHTML, to prevent script injection.
-        const FIELDS = [
-            ['name', 'Name'],
-            ['company_name', 'Company Name'],
-            ['phone_number', 'Phone Number'],
-            ['email', 'Email'],
-        ];
-
-        fetch('/final_results')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('results-container');
-                data.forEach(entry => {
-                    const card = document.createElement('div');
-                    card.className = 'card-block';
-
-                    const img = document.createElement('img');
-                    img.alt = 'Business Card';
-                    if (typeof entry.image === 'string' && entry.image.startsWith('data:image/')) img.src = entry.image;
-                    card.appendChild(img);
-                    FIELDS.forEach(([key, label]) => {
-                        const group = document.createElement('div');
-                        group.className = 'field-group';
-                        const labelEl = document.createElement('label');
-                        labelEl.textContent = label + ':';
-                        const value = document.createElement('span');
-                        value.textContent = entry.details[key] || 'N/A';
-                        group.append(labelEl, value);
-                        card.appendChild(group);
-                    });
-                    container.appendChild(card);
-                });
-            })
-            .catch(err => {
-                console.error("Error loading results:", err);
-                alert("Failed to load results.");
-            });
-    </script>
+    <script src="js/common.js"></script>
+    <script src="js/results.js"></script>
 </body>
 </html>

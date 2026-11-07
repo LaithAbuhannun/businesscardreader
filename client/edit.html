@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edit Card Details</title>
     <style>
@@ -72,6 +73,15 @@
             cursor: pointer;
         }
 
+        .remove-btn {
+            background-color: #d93025;
+        }
+
+        .card-note {
+            color: #8a1c13;
+            margin: 10px 0 0;
+        }
+
         #save {
             margin-top: 5px;
             padding: 10px 20px;
@@ -89,140 +99,16 @@
             100% { color: #34a853; }
         }
     </style>
+    <link rel="stylesheet" href="messages.css">
 </head>
 <body>
     <div class="template">
         <h1>Edit Card Details</h1>
+        <div id="message" hidden></div>
         <div id="cards-container"></div>
         <button id="save">Save All</button>
     </div>
-
-    <script>
-        // Card text comes from an AI model reading a photo, so it is always
-        // inserted as text (never HTML) to prevent script injection.
-        const FIELDS = [
-            ['name', 'Name'],
-            ['company_name', 'Company Name'],
-            ['phone_number', 'Phone Number'],
-            ['email', 'Email'],
-        ];
-
-        function cardImage(src) {
-            const img = document.createElement('img');
-            img.alt = 'Business Card';
-            if (typeof src === 'string' && src.startsWith('data:image/')) img.src = src;
-            return img;
-        }
-
-        function actionButton(text, className, id, handler) {
-            const button = document.createElement('button');
-            button.className = className;
-            button.textContent = text;
-            button.dataset.id = String(id);
-            button.addEventListener('click', () => handler(button));
-            return button;
-        }
-
-        // Fetch extracted data from the backend
-        let saveBtn = document.getElementById('save');
-
-        fetch('/extract')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('cards-container');
-                data.forEach(entry => {
-                    const card = document.createElement('div');
-                    card.className = 'card-block';
-
-                    card.appendChild(cardImage(entry.image));
-                    FIELDS.forEach(([key, label]) => {
-                        const group = document.createElement('div');
-                        group.className = 'field-group';
-                        const labelEl = document.createElement('label');
-                        labelEl.textContent = label + ':';
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.maxLength = 200;
-                        input.dataset.field = key;
-                        input.value = entry.details[key] || '';
-                        group.append(labelEl, input);
-                        card.appendChild(group);
-                    });
-                    card.appendChild(actionButton('Save Changes', 'save-btn', entry.id, saveCard));
-                    card.appendChild(actionButton('Remove', 'remove-btn', entry.id, removeCard));
-                    container.appendChild(card);
-                });
-
-
-            });
-
-        function saveCard(button) {
-            const cardBlock = button.parentElement;
-            const id = parseInt(button.dataset.id, 10);
-            const details = {};
-            cardBlock.querySelectorAll('input[data-field]').forEach(input => {
-                details[input.dataset.field] = input.value;
-            });
-            const updated = { id: id, details: details };
-            
-            fetch('/update_card', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updated)
-            })
-            .then(res => res.json())
-            .then(response => {
-        if (response.success) {
-          console.log("successful");
-          alert("Changes Saved");
-        } else {
-          console.log("fail")
-        }
-      })
-      .catch(err => {
-        console.error("Update error:", err);
-      });
-    }
-
-    function removeCard(button) {
-            const id = parseInt(button.dataset.id, 10);
-
-            fetch('/remove_card', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id })
-            })
-            .then(res => res.json())
-            .then(response => {
-                if (response.success) {
-                    button.parentElement.remove();
-                    alert("Card removed successfully");
-                } else {
-                    alert("Removal failed");
-                }
-            })
-            .catch(err => {
-                console.error("Remove error:", err);
-            });
-        }
-
-    saveBtn.addEventListener('click', ()=> {
-        fetch('/save_final', {
-            method: 'POST'
-        })
-        .then(res=> res.json())
-        .then(response => {
-            if (response.success) {
-                alert("Saved All Successfully");
-            } else {
-                alert("Saved Failed");
-            }
-        }).catch(err => {
-        console.error("Final save error:", err);
-        alert("Server error");
-      });
-    });
-        
-    </script>
+    <script src="js/common.js"></script>
+    <script src="js/edit.js"></script>
 </body>
 </html>

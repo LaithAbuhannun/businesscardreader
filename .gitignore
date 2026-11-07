@@ -3,8 +3,10 @@ server/data/
 server/final_database.json
 server/*.jpg
 
-# Secrets
+# Secrets: .env and any variant like .env.local, but keep the example
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -12,6 +14,9 @@ __pycache__/
 .pytest_cache/
 venv/
 .venv/
+
+# Node (not used, but the old version had it)
+node_modules/
 
 # OS
 .DS_Store

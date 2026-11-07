@@ -2,5 +2,6 @@ flask>=3.0,<4
 werkzeug>=3.0,<4
 numpy>=1.26
 pillow>=10.3
+python-dotenv>=1.0
 ultralytics>=8.2
 openai>=1.40

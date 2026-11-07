@@ -1,87 +1,10 @@
 import base64
 import json
-import sys
-from io import BytesIO
-from pathlib import Path
 
-import numpy as np
 import pytest
-from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import server  # noqa: E402
-
-PASSWORD = "correct-horse-1"
-
-
-class FakeDetector:
-    def __init__(self, boxes=None):
-        self.boxes = boxes if boxes is not None else [[10, 10, 200, 120], [300, 300, 600, 500]]
-
-    def detect(self, rgb):
-        return self.boxes, rgb
-
-
-class FakeExtractor:
-    def __init__(self, result=None, fail=False):
-        self.result = result or {"name": "Jane Doe", "company_name": "Acme", "phone_number": "0400 000 000", "email": "jane@acme.com"}
-        self.fail = fail
-        self.calls = 0
-
-    def extract(self, jpeg_b64):
-        self.calls += 1
-        base64.b64decode(jpeg_b64, validate=True)  # crops must be real base64 JPEG
-        if self.fail:
-            raise RuntimeError("model unavailable")
-        return dict(self.result)
-
-
-def image_data_url(fmt="JPEG", size=(640, 480)):
-    buffer = BytesIO()
-    Image.fromarray(np.full((size[1], size[0], 3), 200, dtype=np.uint8)).save(buffer, format=fmt)
-    mime = {"JPEG": "image/jpeg", "PNG": "image/png"}[fmt]
-    return f"data:{mime};base64," + base64.b64encode(buffer.getvalue()).decode()
-
-
-@pytest.fixture
-def make_client(tmp_path, monkeypatch):
-    monkeypatch.setenv("BCR_SECRET_KEY", "test-secret")
-
-    def factory(detector=None, extractor=None):
-        app = server.create_app(
-            {"TESTING": True, "DATA_DIR": str(tmp_path)},
-            detector=detector or FakeDetector(),
-            extractor=extractor or FakeExtractor(),
-        )
-        return app.test_client()
-
-    return factory
-
-
-@pytest.fixture
-def client(make_client):
-    return make_client()
-
-
-def signup(client, email="user@example.com", password=PASSWORD):
-    return client.post("/signup_authorization", json={"email": email, "password": password})
-
-
-def login(client, email="user@example.com", password=PASSWORD):
-    return client.post("/login_authorization", json={"email": email, "password": password})
-
-
-def signed_in(client, email="user@example.com"):
-    assert signup(client, email).status_code == 201
-    assert login(client, email).status_code == 200
-    return client
-
-
-def scan(client):
-    assert client.post("/predict", json={"image": image_data_url()}).status_code == 200
-    return client.post("/confirm")
-
+import server
+from helpers import PASSWORD, FakeDetector, FakeExtractor, image_data_url, login, scan, signed_in, signup
 
 # ---------- Accounts ----------
 
@@ -145,7 +68,7 @@ def test_non_json_bodies_are_rejected(client):
 
 def test_logout_ends_the_session(client):
     signed_in(client)
-    client.post("/logout")
+    client.post("/logout", json={})
     assert client.get("/extract").status_code == 401
 
 
@@ -172,7 +95,7 @@ def test_api_requires_login(client, method, path):
 def test_protected_pages_redirect_to_login(client):
     for page in ("index.html", "upload.html", "edit.html", "results.html"):
         body = client.get(f"/{page}").get_data(as_text=True)
-        assert "login()" in body  # the login page was served instead
+        assert 'id="login-form"' in body  # the login page was served instead
 
 
 def test_static_paths_cannot_escape_client_folder(client):
@@ -183,7 +106,7 @@ def test_static_paths_cannot_escape_client_folder(client):
 def test_users_only_see_their_own_contacts(make_client):
     alice = signed_in(make_client(), "alice@example.com")
     scan(alice)
-    alice.post("/save_final")
+    alice.post("/save_final", json={})
 
     bob = signed_in(make_client(), "bob@example.com")
     assert bob.get("/final_results").get_json() == []
@@ -205,7 +128,7 @@ def test_full_scan_review_and_save_flow(client):
     assert update.status_code == 200
     assert client.delete("/remove_card", json={"id": 1}).status_code == 200
 
-    saved = client.post("/save_final").get_json()
+    saved = client.post("/save_final", json={}).get_json()
     assert saved == {"success": True, "saved": 1}
     results = client.get("/final_results").get_json()
     assert results[0]["details"]["name"] == "John"
@@ -214,8 +137,8 @@ def test_full_scan_review_and_save_flow(client):
 def test_saving_twice_does_not_duplicate(client):
     signed_in(client)
     scan(client)
-    client.post("/save_final")
-    client.post("/save_final")
+    client.post("/save_final", json={})
+    client.post("/save_final", json={})
     assert len(client.get("/final_results").get_json()) == 1  # both fake cards have identical details
 
 
@@ -247,7 +170,7 @@ def test_oversized_upload_is_rejected(client):
 
 def test_confirm_without_scan_is_rejected(client):
     signed_in(client)
-    assert client.post("/confirm").status_code == 400
+    assert client.post("/confirm", json={}).status_code == 400
 
 
 def test_out_of_bounds_and_empty_boxes_are_clamped_or_skipped(make_client):

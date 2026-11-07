@@ -4,7 +4,9 @@ Flask backend that detects business cards with a custom YOLO model, crops each
 card, extracts contact details with a vision LLM, and lets each signed-in user
 review and save their own contacts.
 
-Configuration (environment variables):
+Configuration comes from environment variables. A .env file in the repo root
+is loaded automatically (real environment variables win over it).
+
     BCR_SECRET_KEY      Session signing key. Required for sessions to survive restarts.
     OPENAI_API_KEY      API key for the vision extraction step.
     BCR_OPENAI_MODEL    Vision model name (default: gpt-4o-mini).
@@ -13,11 +15,14 @@ Configuration (environment variables):
     BCR_IOU             Overlap threshold for merging boxes (default: 0.5, as in training).
     BCR_DATA_DIR        Where accounts and contacts are stored (default: server/data).
     BCR_COOKIE_SECURE   Set to 1 when served over HTTPS.
+    BCR_SESSION_HOURS   How long a login lasts (default: 12).
     HOST / PORT         Bind address (default: 127.0.0.1:5500).
 """
 
 import base64
 import binascii
+import csv
+import io
 import json
 import logging
 import os
@@ -26,17 +31,22 @@ import secrets
 import tempfile
 import threading
 import time
+from datetime import timedelta
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
 
 import numpy as np
-from flask import Flask, jsonify, request, send_from_directory, session
+from dotenv import load_dotenv
+from flask import Flask, Response, jsonify, request, send_from_directory, session
 from PIL import Image, UnidentifiedImageError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
 CLIENT_DIR = BASE_DIR.parent / "client"
+
+# Secrets live in the git-ignored .env file, never in the code.
+load_dotenv(BASE_DIR.parent / ".env", override=False)
 
 CARD_FIELDS = ("name", "company_name", "phone_number", "email")
 MAX_FIELD_LENGTH = 200
@@ -47,8 +57,20 @@ MAX_IMAGE_PIXELS = 25_000_000
 MODEL_INPUT_SIZE = (1024, 1024)
 MAX_LOGIN_FAILURES = 5
 LOCKOUT_SECONDS = 300
+# Caps auth attempts per client address, so one client can't guess passwords
+# across many different emails (the per-email lockout alone can't stop that).
+AUTH_RATE_LIMIT = 30
+AUTH_RATE_WINDOW = 60
+# Each detected card costs one vision-model call; cap it per scan.
+MAX_CARDS_PER_SCAN = 10
 ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
+ALLOWED_IMAGE_FORMATS = ["JPEG", "PNG", "WEBP"]
 PUBLIC_PAGES = {"login.html"}
+CSV_HEADERS = ("Name", "Company", "Phone", "Email")
+# Spreadsheet apps run cells starting with these as formulas (CSV injection).
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+# A plain phone number like "+61 400 000 000" can't call a function, so it's left alone.
+PHONE_LIKE = re.compile(r"^[+\d\s().-]+$")
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,253}\.[^@\s]{2,}$")
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
@@ -191,10 +213,14 @@ def decode_image(data_url):
         raise BadRequest("image must be a JPEG, PNG or WebP data URL")
     try:
         raw = base64.b64decode(match.group(2), validate=True)
-        image = Image.open(BytesIO(raw))
+        # Only the three formats we accept; Pillow would otherwise open dozens more.
+        image = Image.open(BytesIO(raw), formats=ALLOWED_IMAGE_FORMATS)
+        # Pillow only warns between 1x and 2x its pixel limit, so check before decoding.
+        if image.width * image.height > MAX_IMAGE_PIXELS:
+            raise BadRequest("image is too large (max 25 megapixels)")
         image.load()
     except (binascii.Error, ValueError, UnidentifiedImageError, Image.DecompressionBombError, OSError):
-        raise BadRequest("image could not be decoded")
+        raise BadRequest("image could not be decoded") from None
     return image.convert("RGB")
 
 
@@ -214,6 +240,56 @@ def crop_box(rgb, box):
     if x2 - x1 < 2 or y2 - y1 < 2:
         return None
     return rgb[y1:y2, x1:x2]
+
+
+def safe_csv_cell(value):
+    """Return a CSV cell that spreadsheet apps won't run as a formula."""
+    text = value or ""
+    if text.startswith(FORMULA_PREFIXES) and not PHONE_LIKE.match(text):
+        return "'" + text
+    return text
+
+
+def contacts_to_csv(entries):
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(CSV_HEADERS)
+    for entry in entries:
+        writer.writerow([safe_csv_cell(entry["details"].get(field)) for field in CARD_FIELDS])
+    return buffer.getvalue()
+
+
+def vcard_escape(value):
+    """Escape a vCard 3.0 text value so card text can't add extra properties."""
+    text = CONTROL_CHARS.sub(" ", value or "")
+    for char, escaped in (("\\", "\\\\"), (";", "\\;"), (",", "\\,")):
+        text = text.replace(char, escaped)
+    return text
+
+
+def contacts_to_vcard(entries):
+    cards = []
+    for entry in entries:
+        details = entry["details"]
+        name = details.get("name") or details.get("company_name") or details.get("email") or "Unknown"
+        given, _, family = (details.get("name") or "").rpartition(" ")
+        if not given:  # a single word is treated as the given name
+            given, family = family, ""
+        lines = [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            "FN:" + vcard_escape(name),
+            f"N:{vcard_escape(family)};{vcard_escape(given)};;;",
+        ]
+        if details.get("company_name"):
+            lines.append("ORG:" + vcard_escape(details["company_name"]))
+        if details.get("phone_number"):
+            lines.append("TEL;TYPE=WORK,VOICE:" + vcard_escape(details["phone_number"]))
+        if details.get("email"):
+            lines.append("EMAIL;TYPE=INTERNET:" + vcard_escape(details["email"]))
+        lines.append("END:VCARD")
+        cards.append("\r\n".join(lines) + "\r\n")
+    return "".join(cards)
 
 
 def normalise_email(value):
@@ -237,6 +313,8 @@ def create_app(config=None, detector=None, extractor=None):
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("BCR_COOKIE_SECURE") == "1",
+        # The signed cookie expires even if the browser keeps it.
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=float(os.environ.get("BCR_SESSION_HOURS", 12))),
         DATA_DIR=os.environ.get("BCR_DATA_DIR", str(BASE_DIR / "data")),
     )
     if config:
@@ -260,12 +338,38 @@ def create_app(config=None, detector=None, extractor=None):
     detections = {}  # email -> {"image": rgb array, "boxes": [...]}
     pending = {}  # email -> [{"id", "image", "details"}]
     login_failures = {}  # email -> (count, first_failure_time)
+    auth_attempts = {}  # client address -> (count, window_start)
 
     # Computed once so unknown emails take as long to reject as wrong passwords.
     dummy_hash = generate_password_hash(secrets.token_hex(16))
 
     def current_user():
-        return session.get("user")
+        """The signed-in email, or None.
+
+        The cookie carries the account's session version. Logging out bumps the
+        version, so a copied cookie stops working after logout.
+        """
+        email = session.get("user")
+        if not email:
+            return None
+        with accounts.lock:
+            record = accounts.data.get(email)
+        if not record or session.get("v") != record.get("session_version", 0):
+            return None
+        return email
+
+    def too_many_auth_attempts():
+        now = time.monotonic()
+        address = request.remote_addr or "unknown"
+        with state_lock:
+            if len(auth_attempts) > 10_000:  # drop stale entries so memory stays bounded
+                for key in [k for k, (_, start) in auth_attempts.items() if now - start >= AUTH_RATE_WINDOW]:
+                    del auth_attempts[key]
+            count, start = auth_attempts.get(address, (0, now))
+            if now - start >= AUTH_RATE_WINDOW:
+                count, start = 0, now
+            auth_attempts[address] = (count + 1, start)
+            return count >= AUTH_RATE_LIMIT
 
     def login_required(view):
         @wraps(view)
@@ -298,6 +402,22 @@ def create_app(config=None, detector=None, extractor=None):
     def handle_too_large(_error):
         return jsonify({"success": False, "error": "Upload is too large (max 10 MB)"}), 413
 
+    @app.errorhandler(405)
+    def handle_wrong_method(_error):
+        return jsonify({"success": False, "error": "Method not allowed"}), 405
+
+    @app.errorhandler(500)
+    def handle_server_error(_error):
+        return jsonify({"success": False, "error": "Something went wrong on the server"}), 500
+
+    @app.before_request
+    def require_json_for_changes():
+        # HTML forms can't send application/json, and a cross-origin script can't
+        # send it without a CORS preflight this server never approves. Requiring it
+        # on every state change blocks cross-site request forgery.
+        if request.method in ("POST", "PUT", "DELETE") and not request.is_json:
+            raise BadRequest("expected a JSON body")
+
     @app.after_request
     def security_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -305,7 +425,7 @@ def create_app(config=None, detector=None, extractor=None):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
-            "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; style-src 'self' 'unsafe-inline'; "
             "connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'"
         )
         if response.mimetype == "application/json":
@@ -320,7 +440,9 @@ def create_app(config=None, detector=None, extractor=None):
 
     @app.route("/<path:path>")
     def serve_static(path):
-        if path.endswith(".html") and path not in PUBLIC_PAGES and not current_user():
+        # Lower-case first: macOS file systems would serve /Upload.HTML as upload.html.
+        page = path.lower()
+        if page.endswith((".html", ".htm")) and page not in PUBLIC_PAGES and not current_user():
             return send_from_directory(CLIENT_DIR, "login.html")
         return send_from_directory(CLIENT_DIR, path)
 
@@ -328,6 +450,8 @@ def create_app(config=None, detector=None, extractor=None):
 
     @app.route("/signup_authorization", methods=["POST"])
     def signup():
+        if too_many_auth_attempts():
+            return jsonify({"success": False, "error": "Too many attempts. Try again in a minute."}), 429
         body = json_body()
         email = normalise_email(body.get("email"))
         password = body.get("password")
@@ -339,13 +463,15 @@ def create_app(config=None, detector=None, extractor=None):
         with accounts.lock:
             if email in accounts.data:
                 return jsonify({"success": False, "error": "An account with that email already exists"}), 409
-            accounts.data[email] = {"password_hash": generate_password_hash(password)}
+            accounts.data[email] = {"password_hash": generate_password_hash(password), "session_version": 0}
             accounts.save()
         log.info("New account created")
         return jsonify({"success": True}), 201
 
     @app.route("/login_authorization", methods=["POST"])
     def login():
+        if too_many_auth_attempts():
+            return jsonify({"success": False, "error": "Too many attempts. Try again in a minute."}), 429
         body = json_body()
         email = normalise_email(body.get("email"))
         password = body.get("password")
@@ -374,8 +500,12 @@ def create_app(config=None, detector=None, extractor=None):
             detections.pop(email, None)
             pending[email] = []
 
+        with accounts.lock:
+            version = accounts.data[email].get("session_version", 0)
         session.clear()  # new session on login prevents session fixation
+        session.permanent = True
         session["user"] = email
+        session["v"] = version
         return jsonify({"success": True})
 
     @app.route("/logout", methods=["POST"])
@@ -385,6 +515,11 @@ def create_app(config=None, detector=None, extractor=None):
             with state_lock:
                 detections.pop(email, None)
                 pending.pop(email, None)
+            # Invalidates every cookie issued for this account, including copies.
+            with accounts.lock:
+                record = accounts.data[email]
+                record["session_version"] = record.get("session_version", 0) + 1
+                accounts.save()
         session.clear()
         return jsonify({"success": True})
 
@@ -402,6 +537,7 @@ def create_app(config=None, detector=None, extractor=None):
             log.exception("Detection failed")
             return jsonify({"success": False, "error": "Detection failed"}), 500
 
+        boxes = boxes[:MAX_CARDS_PER_SCAN]
         with state_lock:
             detections[current_user()] = {"image": rgb, "boxes": boxes}
         _, preview = to_jpeg_data_url(annotated)
@@ -412,7 +548,8 @@ def create_app(config=None, detector=None, extractor=None):
     def confirm():
         email = current_user()
         with state_lock:
-            detection = detections.get(email)
+            # One scan is read once, so repeated confirms can't run up model costs.
+            detection = detections.pop(email, None)
         if not detection:
             raise BadRequest("Scan an image before confirming")
 
@@ -501,6 +638,30 @@ def create_app(config=None, detector=None, extractor=None):
     def final_results():
         with contacts.lock:
             return jsonify(contacts.data.get(current_user(), []))
+
+    # ---------- Export ----------
+
+    def download(text, mimetype, filename):
+        return Response(
+            text,
+            mimetype=mimetype,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+        )
+
+    @app.route("/export/contacts.csv", methods=["GET"])
+    @login_required
+    def export_csv():
+        with contacts.lock:
+            entries = list(contacts.data.get(current_user(), []))
+        # The BOM makes Excel open the file as UTF-8, so accented names survive.
+        return download("\ufeff" + contacts_to_csv(entries), "text/csv", "contacts.csv")
+
+    @app.route("/export/contacts.vcf", methods=["GET"])
+    @login_required
+    def export_vcard():
+        with contacts.lock:
+            entries = list(contacts.data.get(current_user(), []))
+        return download(contacts_to_vcard(entries), "text/vcard", "contacts.vcf")
 
     return app
 

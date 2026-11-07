@@ -72,13 +72,16 @@ No more typing names, phone numbers, and emails from paper.
     | /save_final
     |   - Saves approved contacts to data/contacts.json
     |
+    | /export/contacts.csv, /export/contacts.vcf
+    |   - Downloads your saved contacts as a spreadsheet or for your phone / address book
+    |
     v
 [ server/data/contacts.json ]
     - Becomes your personal contact list (per user session)
 ```
 
 So the pipeline is:
-**Upload → Detect → Crop → AI Extract → Review/Edit → Save.**
+**Upload → Detect → Crop → AI Extract → Review/Edit → Save → Export.**
 
 ---
 
@@ -134,8 +137,11 @@ This step is what turns pixels into usable contact info.
 * The frontend calls `POST /save_final`.
 * The backend writes all approved contacts into `server/data/contacts.json`, linked to your user.
 * Now you have a simple persistent “mini CRM” file of contacts you scanned from physical cards.
+* On the **My Cards** page, **Download CSV** gives a spreadsheet (opens in Excel, Numbers or Google Sheets) and **Download vCard** gives a `.vcf` file you can import into Apple Contacts, Google Contacts or Outlook.
 
-Later this can become CSV export, vCard export, or automatic CRM import.
+### ⚠️ Clear error messages
+
+* Every page shows problems in a message box at the top instead of failing silently: server not running, camera blocked or missing, no cards found in the photo, AI extraction failed, session expired (you're sent back to login), upload too large, too many login attempts.
 
 ---
 
@@ -151,8 +157,12 @@ businesscardreader/
 │   ├─ upload.html          # optional upload flow variation
 │   ├─ image.html           # shows detected bounding boxes / preview
 │   ├─ tab.html             # review extracted info for each card (edit/delete before save)
-│   ├─ results.html         # shows saved contacts after you confirm/save
+│   ├─ results.html         # shows saved contacts, with CSV / vCard download
 │   ├─ edit.html            # focused edit of one contact's fields
+│   ├─ js/
+│   │   ├─ common.js        # shared API helper + on-page error/status messages
+│   │   └─ login.js, upload.js, edit.js, results.js   # one script per page
+│   ├─ messages.css         # styling for the message box
 │   ├─ style.css            # shared styling for all pages
 │   └─ bcrlogo.png          # project branding / logo
 
@@ -165,13 +175,19 @@ businesscardreader/
 │   │                       #   /extract  (get parsed cards for this user)
 │   │                       #   /update_card, /remove_card (edit/delete one card)
 │   │                       #   /save_final, /final_results (persist and list contacts)
+│   │                       #   /export/contacts.csv, /export/contacts.vcf (download)
 │   ├─ runs/
 │   │   └─ best.pt          # YOLO weights (custom trained business-card detector)
 │   ├─ tests/
-│   │   └─ test_app.py      # pytest suite (model and LLM are faked, no API key needed)
+│   │   ├─ test_app.py      # feature tests (model and LLM are faked, no API key needed)
+│   │   ├─ test_security.py # attack tests: auth, sessions, brute force, uploads, XSS, CSRF…
+│   │   ├─ conftest.py      # shared fixtures
+│   │   └─ helpers.py       # fake detector / extractor and request helpers
 │   ├─ data/                # created at runtime: accounts.json + contacts.json (git-ignored)
 │   ├─ requirements.txt     # runtime dependencies
-│   └─ requirements-dev.txt # test dependencies (no PyTorch needed)
+│   └─ requirements-dev.txt # test + security-scan dependencies (no PyTorch needed)
+
+├─ .env.example             # copy to .env and fill in (the real .env is git-ignored)
 
 └─ model/
     └─ yolo-final.ipynb     # Jupyter notebook that documents how the YOLO model was trained
@@ -250,6 +266,13 @@ businesscardreader/
 * `GET /final_results`
   Returns the saved contact list so you can view it later in `results.html`.
 
+**6. Export**
+
+* `GET /export/contacts.csv`
+  Your saved contacts as CSV (Name, Company, Phone, Email). UTF-8 with a BOM so Excel shows accents correctly.
+* `GET /export/contacts.vcf`
+  Your saved contacts as vCard 3.0, one card per contact.
+
 ### YOLO inference
 
 * The YOLO weights live in `server/runs/best.pt`.
@@ -295,6 +318,7 @@ Typical user flow:
 
    * After the user presses save, `/save_final` writes those contacts to `server/data/contacts.json`.
    * The saved list is shown here, acting like a mini contact book.
+   * **Download CSV** / **Download vCard** export the list.
 
 6. `edit.html`
 
@@ -341,12 +365,16 @@ source venv/bin/activate
 
 pip install -r requirements.txt
 
-# Secrets come from the environment, never from the code (see ../.env.example)
-export BCR_SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
-export OPENAI_API_KEY=sk-your-key
+# Secrets live in a .env file in the repo root, never in the code.
+cp ../.env.example ../.env
+python -c "import secrets; print(secrets.token_hex(32))"   # paste as BCR_SECRET_KEY in .env
+# then put your OpenAI key after OPENAI_API_KEY= in .env
 
 python server.py
 ```
+
+`server.py` loads `.env` automatically (with `python-dotenv`). Variables already set in your
+shell take priority over the file. `.env` is in `.gitignore`, and CI fails if one is ever committed.
 
 Make sure `server/runs/best.pt` exists (your YOLO weights).
 Detection keeps boxes scoring at least `0.25` (override with `BCR_CONFIDENCE`), and merges overlapping boxes at IoU `0.5`, the value used in training.
@@ -356,16 +384,26 @@ Detection keeps boxes scoring at least `0.25` (override with `BCR_CONFIDENCE`), 
 The Flask server also serves the UI. Open **http://127.0.0.1:5500** and sign up, then log in.
 (The camera works on `localhost`/`127.0.0.1`; anywhere else it needs HTTPS.)
 
-### 3. Tests
+### 3. Tests and security scans
 
 ```bash
 cd server
 pip install -r requirements-dev.txt
-python -m pytest -q
+python -m pytest -q                         # feature + security tests
+
+cd ..
+bandit -r server -x server/tests,server/venv   # static security scan of the code
+pip-audit -r server/requirements.txt -r server/requirements-dev.txt   # known-vulnerable dependencies
 ```
 
 The tests replace YOLO and the vision model with fakes, so they run in seconds without
-PyTorch or an API key. GitHub Actions runs them on every push.
+PyTorch or an API key. `tests/test_security.py` tries the attacks directly: missing, forged,
+tampered, expired and replayed session cookies on every endpoint; brute-force lockout and
+password spraying; path traversal; oversized, malformed and decompression-bomb uploads;
+XSS payloads in card fields and CSV/vCard injection; cross-site request forgery; and one user
+reading or changing another user's cards.
+
+GitHub Actions runs the tests, bandit and pip-audit on every push and pull request.
 
 ---
 
@@ -373,10 +411,13 @@ PyTorch or an API key. GitHub Actions runs them on every push.
 
 * **Passwords** are hashed with Werkzeug's salted scrypt and never logged. Accounts persist in `server/data/accounts.json`.
 * **Login** gives the same answer for an unknown email and a wrong password, runs a hash check either way so timing doesn't leak which emails exist, and locks an email out for 5 minutes after 5 failed attempts.
-* **Sessions** are signed with `BCR_SECRET_KEY` from the environment, cleared on login (no session fixation), and use `HttpOnly` + `SameSite=Lax` cookies (`Secure` with `BCR_COOKIE_SECURE=1`).
+* **Brute force:** besides the per-email lockout, each client address is limited to 30 login/sign-up attempts a minute, which stops one password being tried across many emails. (Behind a reverse proxy every request has the proxy's address, so put the limit in the proxy instead.)
+* **Sessions** are signed with `BCR_SECRET_KEY` from the environment, cleared on login (no session fixation), expire after 12 hours (`BCR_SESSION_HOURS`), and use `HttpOnly` + `SameSite=Lax` cookies (`Secure` with `BCR_COOKIE_SECURE=1`). Logging out invalidates the cookie on the server, so a copied cookie stops working too. (This logs that account out on every device.)
+* **Cross-site request forgery:** every request that changes something must be JSON, which an HTML form on another site can't send.
 * **Every data endpoint requires login**, and each user can only read or change their own cards.
-* **Uploads** are capped at 10 MB, must be real JPEG/PNG/WebP images, and are checked against decompression bombs. Crop boxes are clamped to the image.
-* **AI output is treated as untrusted.** The prompt tells the model card text is data, not instructions; the response is reduced to the four expected string fields with a length cap; and the UI inserts it with `textContent`, never `innerHTML`, so a card can't inject script.
+* **Uploads** are capped at 10 MB and 25 megapixels (checked before decoding), and must actually be JPEG, PNG or WebP: other formats Pillow can read are refused even if labelled as one of those. Crop boxes are clamped to the image.
+* **AI cost:** at most 10 cards are read per scan, and each scan can be confirmed only once, so repeated requests can't run up OpenAI charges.
+* **AI output is treated as untrusted.** The prompt tells the model card text is data, not instructions; the response is reduced to the four expected string fields with a length cap; and the UI inserts it with `textContent`, never `innerHTML`, so a card can't inject script. The CSP allows no inline scripts. CSV export prefixes formula-like cells with `'` so spreadsheets don't run them, and vCard export escapes values so a card can't add extra fields.
 * **Privacy:** card images are sent with `store=False`, user data lives in a git-ignored folder, and errors return generic messages while details go to the server log.
 * **Headers:** Content-Security-Policy, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`.
 * The server binds to `127.0.0.1` by default. Working state is kept in memory, so run a single process.
@@ -392,6 +433,7 @@ PyTorch or an API key. GitHub Actions runs them on every push.
 * [x] Edit / delete contacts before saving
 * [x] Save final contact list per user
 * [x] Hashed passwords, input validation, security headers and a test suite
-* [ ] Export to CSV / vCard
+* [x] Export to CSV / vCard
+* [x] Security test suite, bandit and pip-audit in CI
 * [ ] Responsive mobile UI (scan directly from phone camera)
 * [ ] Hosted / deployed version (no local setup required)
