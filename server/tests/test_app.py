@@ -258,3 +258,60 @@ def test_session_cannot_be_forged_with_another_key(make_client, monkeypatch):
     forged = make_client()
     forged.set_cookie("session", client.get_cookie("session").value)
     assert forged.get("/extract").status_code == 401
+
+
+# ---------- Crop quality ----------
+
+
+class SizeRecordingExtractor(FakeExtractor):
+    """Records the size of each crop the AI is given."""
+
+    def __init__(self):
+        super().__init__()
+        self.sizes = []
+
+    def extract(self, jpeg_b64):
+        from io import BytesIO
+
+        from PIL import Image
+
+        self.sizes.append(Image.open(BytesIO(base64.b64decode(jpeg_b64))).size)
+        return super().extract(jpeg_b64)
+
+
+def test_scale_box_maps_and_widens():
+    assert server.scale_box([100, 100, 200, 300], (1000, 1000), (2000, 500)) == [200, 50, 400, 150]
+    assert server.scale_box([100, 100, 200, 200], (1000, 1000), (1000, 1000), margin=0.1) == [90, 90, 210, 210]
+
+
+def test_crops_come_from_the_full_resolution_photo_with_a_margin(make_client):
+    # Box covers the middle quarter of the 1024x1024 model image.
+    extractor = SizeRecordingExtractor()
+    client = signed_in(make_client(detector=FakeDetector(boxes=[[256, 256, 768, 768]]), extractor=extractor))
+    client.post("/predict", json={"image": image_data_url(size=(2000, 1500))})
+    client.post("/confirm", json={})
+    # On the 2000x1500 photo the box is 1000x750; the 15% margin each side makes it 1.3x
+    # (give or take a pixel of rounding).
+    (width, height), = extractor.sizes
+    assert abs(width - 1300) <= 1 and abs(height - 975) <= 1
+
+
+def test_crop_margin_is_clamped_to_the_photo(make_client):
+    extractor = SizeRecordingExtractor()
+    client = signed_in(make_client(detector=FakeDetector(boxes=[[0, 0, 1024, 1024]]), extractor=extractor))
+    client.post("/predict", json={"image": image_data_url(size=(800, 600))})
+    client.post("/confirm", json={})
+    assert extractor.sizes == [(800, 600)]
+
+
+def test_very_large_photos_are_shrunk_before_cropping(make_client):
+    extractor = SizeRecordingExtractor()
+    client = signed_in(make_client(detector=FakeDetector(boxes=[[0, 0, 1024, 1024]]), extractor=extractor))
+    client.post("/predict", json={"image": image_data_url(size=(4000, 3000))})
+    client.post("/confirm", json={})
+    assert max(extractor.sizes[0]) == server.MAX_CROP_SOURCE_SIDE
+
+
+def test_prompt_tells_the_model_not_to_guess():
+    prompt = server.EXTRACTION_PROMPT.lower()
+    assert "never guess" in prompt and "unreadable" in prompt

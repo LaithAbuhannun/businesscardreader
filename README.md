@@ -102,12 +102,12 @@ So the pipeline is:
 
 ### ✂️ Automatic cropping
 
-* After detection, each bounding box is clamped to the image and sliced out in memory (no files on disk).
+* After detection, each bounding box is mapped back onto the original photo (up to 2048 px, so text stays sharp), widened by 15% on every side because the detector's boxes tend to stop short of the card's edges, clamped to the image, and sliced out in memory (no files on disk).
 * These crops are basically “just the card,” cleaned up so OCR/vision can focus only on the card.
 
 ### 🧾 Contact extraction with vision AI
 
-* For each cropped card, the backend calls a vision LLM (for example, `gpt-4o-mini`) and asks it to return a clean JSON with:
+* For each cropped card, the backend calls a vision LLM (for example, `gpt-4.1-mini`) and asks it to return a clean JSON with:
 
   * `name`
   * `company_name`
@@ -116,6 +116,16 @@ So the pipeline is:
 * The backend normalises that data and stores it temporarily in memory for that logged-in user.
 
 This step is what turns pixels into usable contact info.
+
+The prompt tells the model to copy text exactly and to leave blurred, pixelated or cut-off
+fields empty rather than guess. In a side-by-side test on real card photos, `gpt-4o-mini`
+still invented an email for a pixelated address, while `gpt-4.1-mini` and larger models
+correctly left it empty, so `gpt-4.1-mini` is the default. Choose another model with
+`BCR_OPENAI_MODEL` in `.env`.
+
+Known limit: when a card fills the whole photo with no background around it, the detector
+can miss part of the card (it was mostly trained on cards with background). Anything it
+misses can be typed in on the review page.
 
 ### 📝 Human review UI (edit before saving)
 
@@ -232,7 +242,7 @@ businesscardreader/
 
   * Takes the detection results.
   * Crops each detected card in memory (no temp files, so users never overwrite each other's scans).
-  * Sends each crop to a vision LLM (for example `gpt-4o-mini`).
+  * Sends each crop to a vision LLM (for example `gpt-4.1-mini`).
   * Asks the model to respond in a strict structured format, for example:
 
     ```json
