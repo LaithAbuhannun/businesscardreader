@@ -98,6 +98,31 @@
     </div>
 
     <script>
+        // Card text comes from an AI model reading a photo, so it is always
+        // inserted as text (never HTML) to prevent script injection.
+        const FIELDS = [
+            ['name', 'Name'],
+            ['company_name', 'Company Name'],
+            ['phone_number', 'Phone Number'],
+            ['email', 'Email'],
+        ];
+
+        function cardImage(src) {
+            const img = document.createElement('img');
+            img.alt = 'Business Card';
+            if (typeof src === 'string' && src.startsWith('data:image/')) img.src = src;
+            return img;
+        }
+
+        function actionButton(text, className, id, handler) {
+            const button = document.createElement('button');
+            button.className = className;
+            button.textContent = text;
+            button.dataset.id = String(id);
+            button.addEventListener('click', () => handler(button));
+            return button;
+        }
+
         // Fetch extracted data from the backend
         let saveBtn = document.getElementById('save');
 
@@ -109,27 +134,22 @@
                     const card = document.createElement('div');
                     card.className = 'card-block';
 
-                    card.innerHTML = `
-                        <img src="${entry.image}" alt="Business Card" />
-                        <div class="field-group">
-                            <label>Name:</label>
-                            <input type="text" value="${entry.details.name || ''}" />
-                        </div>
-                        <div class="field-group">
-                            <label>Company Name:</label>
-                            <input type="text" value="${entry.details.company_name || ''}" />
-                        </div>
-                        <div class="field-group">
-                            <label>Phone Number:</label>
-                            <input type="text" value="${entry.details.phone_number || ''}" />
-                        </div>
-                        <div class="field-group">
-                            <label>Email:</label>
-                            <input type="text" value="${entry.details.email || ''}" />
-                        </div>
-                        <button class="save-btn" onclick="saveCard(this)" data-id="${entry.id}">Save Changes</button>
-                        <button class="remove-btn" onclick="removeCard(this)" data-id="${entry.id}">Remove</button>
-                    `;
+                    card.appendChild(cardImage(entry.image));
+                    FIELDS.forEach(([key, label]) => {
+                        const group = document.createElement('div');
+                        group.className = 'field-group';
+                        const labelEl = document.createElement('label');
+                        labelEl.textContent = label + ':';
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.maxLength = 200;
+                        input.dataset.field = key;
+                        input.value = entry.details[key] || '';
+                        group.append(labelEl, input);
+                        card.appendChild(group);
+                    });
+                    card.appendChild(actionButton('Save Changes', 'save-btn', entry.id, saveCard));
+                    card.appendChild(actionButton('Remove', 'remove-btn', entry.id, removeCard));
                     container.appendChild(card);
                 });
 
@@ -138,19 +158,12 @@
 
         function saveCard(button) {
             const cardBlock = button.parentElement;
-            const inputs = cardBlock.querySelectorAll('input');
-            const id = parseInt(button.getAttribute('data-id'));
-            const updated = {
-                "id": id,
-
-                "details": {
-                    name: inputs[0].value,
-                    company_name: inputs[1].value,
-                    phone_number: inputs[2].value,
-                    email: inputs[3].value
-                }
-
-            };
+            const id = parseInt(button.dataset.id, 10);
+            const details = {};
+            cardBlock.querySelectorAll('input[data-field]').forEach(input => {
+                details[input.dataset.field] = input.value;
+            });
+            const updated = { id: id, details: details };
             
             fetch('/update_card', {
                 method: 'PUT',
@@ -172,7 +185,7 @@
     }
 
     function removeCard(button) {
-            const id = parseInt(button.getAttribute('data-id'));
+            const id = parseInt(button.dataset.id, 10);
 
             fetch('/remove_card', {
                 method: 'DELETE',

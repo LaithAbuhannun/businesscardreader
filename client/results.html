@@ -73,6 +73,14 @@
     </div>
 
     <script>
+        // Saved text is inserted with textContent, never innerHTML, to prevent script injection.
+        const FIELDS = [
+            ['name', 'Name'],
+            ['company_name', 'Company Name'],
+            ['phone_number', 'Phone Number'],
+            ['email', 'Email'],
+        ];
+
         fetch('/final_results')
             .then(res => res.json())
             .then(data => {
@@ -81,25 +89,20 @@
                     const card = document.createElement('div');
                     card.className = 'card-block';
 
-                    card.innerHTML = `
-                        <img src="${entry.image}" alt="Business Card" />
-                        <div class="field-group">
-                            <label>Name:</label>
-                            <span>${entry.details.name || 'N/A'}</span>
-                        </div>
-                        <div class="field-group">
-                            <label>Company Name:</label>
-                            <span>${entry.details.company_name || 'N/A'}</span>
-                        </div>
-                        <div class="field-group">
-                            <label>Phone Number:</label>
-                            <span>${entry.details.phone_number || 'N/A'}</span>
-                        </div>
-                        <div class="field-group">
-                            <label>Email:</label>
-                            <span>${entry.details.email || 'N/A'}</span>
-                        </div>
-                    `;
+                    const img = document.createElement('img');
+                    img.alt = 'Business Card';
+                    if (typeof entry.image === 'string' && entry.image.startsWith('data:image/')) img.src = entry.image;
+                    card.appendChild(img);
+                    FIELDS.forEach(([key, label]) => {
+                        const group = document.createElement('div');
+                        group.className = 'field-group';
+                        const labelEl = document.createElement('label');
+                        labelEl.textContent = label + ':';
+                        const value = document.createElement('span');
+                        value.textContent = entry.details[key] || 'N/A';
+                        group.append(labelEl, value);
+                        card.appendChild(group);
+                    });
                     container.appendChild(card);
                 });
             })

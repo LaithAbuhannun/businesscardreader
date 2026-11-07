@@ -58,7 +58,7 @@ No more typing names, phone numbers, and emails from paper.
     |   - Returns bounding boxes + a preview
     |
     | /confirm
-    |   - Crops each detected card (crop_0.jpg, crop_1.jpg, ...)
+    |   - Crops each detected card (in memory)
     |   - Sends each crop to a vision LLM
     |   - Extracts: { name, company_name, phone_number, email }
     |
@@ -70,10 +70,10 @@ No more typing names, phone numbers, and emails from paper.
     |   - User can edit or delete any card's info before saving
     |
     | /save_final
-    |   - Saves approved contacts to final_database.json
+    |   - Saves approved contacts to data/contacts.json
     |
     v
-[ final_database.json ]
+[ server/data/contacts.json ]
     - Becomes your personal contact list (per user session)
 ```
 
@@ -99,9 +99,7 @@ So the pipeline is:
 
 ### ✂️ Automatic cropping
 
-* After detection, each bounding box is sliced out into its own file:
-
-  * `crop_0.jpg`, `crop_1.jpg`, `crop_2.jpg`, …
+* After detection, each bounding box is clamped to the image and sliced out in memory (no files on disk).
 * These crops are basically “just the card,” cleaned up so OCR/vision can focus only on the card.
 
 ### 🧾 Contact extraction with vision AI
@@ -134,7 +132,7 @@ This step is what turns pixels into usable contact info.
 
 * When you’re satisfied, you click save.
 * The frontend calls `POST /save_final`.
-* The backend writes all approved contacts into `final_database.json`, linked to your user.
+* The backend writes all approved contacts into `server/data/contacts.json`, linked to your user.
 * Now you have a simple persistent “mini CRM” file of contacts you scanned from physical cards.
 
 Later this can become CSV export, vCard export, or automatic CRM import.
@@ -166,18 +164,14 @@ businesscardreader/
 │   │                       #   /confirm  (crop + AI extraction)
 │   │                       #   /extract  (get parsed cards for this user)
 │   │                       #   /update_card, /remove_card (edit/delete one card)
-│   │                       #   /save_final (persist contacts)
-│   ├─ final_database.json  # local "mini CRM": saved contacts mapped to each user
-│   ├─ crop_0.jpg           # sample cropped card images from detection
-│   ├─ crop_1.jpg
-│   ├─ crop_2.jpg
-│   ├─ lat.jpg              # example raw photo used for testing
+│   │                       #   /save_final, /final_results (persist and list contacts)
 │   ├─ runs/
 │   │   └─ best.pt          # YOLO weights (custom trained business-card detector)
-│   ├─ package.json         # if using Node/tooling for backend dev tasks
-│   ├─ package-lock.json
-│   └─ requirements.txt     # Flask, flask-cors, ultralytics, opencv-python, pillow,
-│                           # numpy, albumentations, openai, etc.
+│   ├─ tests/
+│   │   └─ test_app.py      # pytest suite (model and LLM are faked, no API key needed)
+│   ├─ data/                # created at runtime: accounts.json + contacts.json (git-ignored)
+│   ├─ requirements.txt     # runtime dependencies
+│   └─ requirements-dev.txt # test dependencies (no PyTorch needed)
 
 └─ model/
     └─ yolo-final.ipynb     # Jupyter notebook that documents how the YOLO model was trained
@@ -222,7 +216,7 @@ businesscardreader/
 * `POST /confirm`
 
   * Takes the detection results.
-  * Crops each detected card into files like `crop_0.jpg`, `crop_1.jpg`, etc.
+  * Crops each detected card in memory (no temp files, so users never overwrite each other's scans).
   * Sends each crop to a vision LLM (for example `gpt-4o-mini`).
   * Asks the model to respond in a strict structured format, for example:
 
@@ -251,9 +245,9 @@ businesscardreader/
 **5. Save final results**
 
 * `POST /save_final`
-  Writes all approved contacts for that user into `final_database.json`.
+  Writes all approved contacts for that user into `server/data/contacts.json` (atomic write, duplicates skipped).
 
-* `GET /final_results` (if you expose it)
+* `GET /final_results`
   Returns the saved contact list so you can view it later in `results.html`.
 
 ### YOLO inference
@@ -299,7 +293,7 @@ Typical user flow:
 
 5. `results.html`
 
-   * After the user presses save, `/save_final` writes those contacts to `final_database.json`.
+   * After the user presses save, `/save_final` writes those contacts to `server/data/contacts.json`.
    * The saved list is shown here, acting like a mini contact book.
 
 6. `edit.html`
@@ -346,21 +340,46 @@ source venv/bin/activate
 # venv\Scripts\activate
 
 pip install -r requirements.txt
+
+# Secrets come from the environment, never from the code (see ../.env.example)
+export BCR_SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+export OPENAI_API_KEY=sk-your-key
+
 python server.py
 ```
 
-Now the Flask API should be running (default: port 5500).
-
-Make sure:
-
-* `server/runs/best.pt` exists (your YOLO weights).
-* Your OpenAI API key is correctly set in `server.py` where the vision extraction happens.
+Make sure `server/runs/best.pt` exists (your YOLO weights).
+Detection keeps boxes scoring at least `0.25` (override with `BCR_CONFIDENCE`), and merges overlapping boxes at IoU `0.5`, the value used in training.
 
 ### 2. Frontend
 
-Open the HTML files in `client/` in your browser, starting from `login.html` (or `index.html` if you skip auth for testing).
+The Flask server also serves the UI. Open **http://127.0.0.1:5500** and sign up, then log in.
+(The camera works on `localhost`/`127.0.0.1`; anywhere else it needs HTTPS.)
 
-Those pages will call backend endpoints like `/predict`, `/confirm`, `/extract`, etc. on `http://localhost:5500/`.
+### 3. Tests
+
+```bash
+cd server
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+The tests replace YOLO and the vision model with fakes, so they run in seconds without
+PyTorch or an API key. GitHub Actions runs them on every push.
+
+---
+
+## 🔒 Security
+
+* **Passwords** are hashed with Werkzeug's salted scrypt and never logged. Accounts persist in `server/data/accounts.json`.
+* **Login** gives the same answer for an unknown email and a wrong password, runs a hash check either way so timing doesn't leak which emails exist, and locks an email out for 5 minutes after 5 failed attempts.
+* **Sessions** are signed with `BCR_SECRET_KEY` from the environment, cleared on login (no session fixation), and use `HttpOnly` + `SameSite=Lax` cookies (`Secure` with `BCR_COOKIE_SECURE=1`).
+* **Every data endpoint requires login**, and each user can only read or change their own cards.
+* **Uploads** are capped at 10 MB, must be real JPEG/PNG/WebP images, and are checked against decompression bombs. Crop boxes are clamped to the image.
+* **AI output is treated as untrusted.** The prompt tells the model card text is data, not instructions; the response is reduced to the four expected string fields with a length cap; and the UI inserts it with `textContent`, never `innerHTML`, so a card can't inject script.
+* **Privacy:** card images are sent with `store=False`, user data lives in a git-ignored folder, and errors return generic messages while details go to the server log.
+* **Headers:** Content-Security-Policy, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`.
+* The server binds to `127.0.0.1` by default. Working state is kept in memory, so run a single process.
 
 ---
 
@@ -371,7 +390,8 @@ Those pages will call backend endpoints like `/predict`, `/confirm`, `/extract`,
 * [x] Extract structured contact info using a vision LLM
 * [x] Per-user session so contacts are private
 * [x] Edit / delete contacts before saving
-* [x] Save final contact list to `final_database.json`
+* [x] Save final contact list per user
+* [x] Hashed passwords, input validation, security headers and a test suite
 * [ ] Export to CSV / vCard
 * [ ] Responsive mobile UI (scan directly from phone camera)
 * [ ] Hosted / deployed version (no local setup required)
