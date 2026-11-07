@@ -1,0 +1,17 @@
+# Local user data (accounts, saved contacts) — never commit
+server/data/
+server/final_database.json
+server/*.jpg
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+
+# OS
+.DS_Store
